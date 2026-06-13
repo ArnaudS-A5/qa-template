@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      ============================================================================
+      qa-parent — Parent POM du socle QA (racine du dépôt, layout Maven standard)
+      ============================================================================
+      Rôle (décision D6) :
+        - Centralise TOUTES les versions (dépendances + plugins) en un seul endroit.
+        - Les ~17 projets consommateurs héritent de ce parent : ils ne gèrent
+          AUCUNE version eux-mêmes (ni dépendance, ni plugin).
+        - Pilote les versions imposées (Selenium, Serenity) : le consommateur
+          n'a pas le choix de la version, c'est le socle qui décide.
+        - Sert aussi d'agrégateur (<modules>) pour builder tout le socle d'un coup :
+          `mvn clean test` depuis la racine du dépôt.
+
+      Conséquence pour le consommateur :
+        - Il déclare `<parent>qa-parent</parent>` puis ajoute la dépendance `qa-socle`
+          SANS version (héritée via dependencyManagement).
+        - Une montée de version du socle = republier qa-parent/qa-socle, sans
+          toucher aux projets consommateurs.
+      ============================================================================
+    -->
+
+    <!-- TODO: aligner groupId/version sur la convention réelle de l'organisation -->
+    <groupId>com.example.qa</groupId>
+    <artifactId>qa-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>QA Parent POM</name>
+    <description>Parent POM du socle QA : centralise versions, plugins et dépendances imposées.</description>
+
+    <!-- Agrégation multi-module : build de l'ensemble du socle depuis la racine. -->
+    <modules>
+        <module>qa-socle</module>
+    </modules>
+
+    <properties>
+        <maven.compiler.release>17</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <!-- Versions imposées (pilotées par le socle).
+             Selenium et Serenity : versions NON négociables côté consommateur. -->
+        <selenium.version>4.25.0</selenium.version>
+        <serenity.version>4.2.22</serenity.version>
+
+        <!-- Lecture/écriture fichiers de données Excel, y compris chiffrés (Apache POI).
+             Le CSV est du texte délimité : il ne passe pas par POI. -->
+        <poi.version>5.3.0</poi.version>
+        <!-- Apache Commons Compress / Collections : requis par poi-ooxml (encryption + xlsx). -->
+        <commons.compress.version>1.27.1</commons.compress.version>
+
+        <!-- Journalisation : façade SLF4J + implémentation Logback. -->
+        <slf4j.version>2.0.16</slf4j.version>
+        <logback.version>1.5.12</logback.version>
+
+        <!-- Tests unitaires du socle.
+             Aligné sur la version transitive imposée par serenity-junit5 pour
+             éviter tout conflit de classpath (deux versions de JUnit Jupiter). -->
+        <junit.jupiter.version>5.11.4</junit.jupiter.version>
+
+        <!-- =================== Versions des plugins =================== -->
+        <surefire.plugin.version>3.5.2</surefire.plugin.version>
+        <compiler.plugin.version>3.13.0</compiler.plugin.version>
+        <!-- Aligné sur serenity.version : le plugin d'agrégation des rapports
+             (mvn serenity:aggregate) doit suivre la version de Serenity. -->
+        <serenity.maven.plugin.version>${serenity.version}</serenity.maven.plugin.version>
+    </properties>
+
+    <!--
+      dependencyManagement : déclare les versions UNE SEULE FOIS.
+      Les modules (et consommateurs héritant du parent) référencent ces dépendances
+      SANS version. C'est le cœur du "zéro modification" côté consommateur.
+    -->
+    <dependencyManagement>
+        <dependencies>
+            <!-- Selenium (imposé) -->
+            <dependency>
+                <groupId>org.seleniumhq.selenium</groupId>
+                <artifactId>selenium-java</artifactId>
+                <version>${selenium.version}</version>
+            </dependency>
+
+            <!-- Serenity BDD (imposé) -->
+            <dependency>
+                <groupId>net.serenity-bdd</groupId>
+                <artifactId>serenity-core</artifactId>
+                <version>${serenity.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.serenity-bdd</groupId>
+                <artifactId>serenity-junit5</artifactId>
+                <version>${serenity.version}</version>
+            </dependency>
+
+            <!-- Apache POI (Excel + Excel chiffré).
+                 poi-ooxml embarque le support de chiffrement (EncryptionInfo) pour
+                 lire/écrire des classeurs .xlsx protégés par mot de passe. -->
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi</artifactId>
+                <version>${poi.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi-ooxml</artifactId>
+                <version>${poi.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-compress</artifactId>
+                <version>${commons.compress.version}</version>
+            </dependency>
+
+            <!-- Journalisation -->
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-classic</artifactId>
+                <version>${logback.version}</version>
+            </dependency>
+
+            <!-- Tests unitaires (JUnit 5) -->
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${junit.jupiter.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <!-- Gestion centralisée des versions de plugins (héritée par les modules). -->
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>${compiler.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${surefire.plugin.version}</version>
+                </plugin>
+                <!-- Agrégation des rapports Serenity : mvn serenity:aggregate
+                     (rapport HTML sous target/site/serenity/). Utilisé par les
+                     projets consommateurs ; version pilotée ici. -->
+                <plugin>
+                    <groupId>net.serenity-bdd.maven.plugins</groupId>
+                    <artifactId>serenity-maven-plugin</artifactId>
+                    <version>${serenity.maven.plugin.version}</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+
+    <!--
+      ==========================================================================
+      Publication Artifactory (mvn deploy)
+      ==========================================================================
+      Le POM déclare OÙ publier (distributionManagement, requis par mvn deploy).
+      Les CREDENTIALS et la RÉSOLUTION (mirror vers le repo virtuel) restent
+      dans le settings.xml de chaque membre/CI :
+        - <server> avec id "artifactory-releases" / "artifactory-snapshots"
+          (les ids doivent correspondre EXACTEMENT à ceux ci-dessous),
+        - <mirror> vers le repo virtuel pour la résolution des dépendances.
+      Cf. skill artifactory-jfrog-settings.
+
+      ⚠️ PLACEHOLDERS : remplacer artifactory.example.com et les noms de repos
+      (libs-release-local / libs-snapshot-local) par les valeurs de VOTRE
+      instance Artifactory. Ne JAMAIS committer de credentials ici.
+    -->
+    <distributionManagement>
+        <repository>
+            <id>artifactory-releases</id>
+            <name>Artifactory — releases</name>
+            <url>https://artifactory.example.com/artifactory/libs-release-local</url>
+        </repository>
+        <snapshotRepository>
+            <id>artifactory-snapshots</id>
+            <name>Artifactory — snapshots</name>
+            <url>https://artifactory.example.com/artifactory/libs-snapshot-local</url>
+        </snapshotRepository>
+    </distributionManagement>
+
+</project>

@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      ============================================================================
+      qa-socle — Librairie socle QA (consommée comme dépendance Maven)
+      ============================================================================
+      Hérite de qa-parent : AUCUNE version n'est déclarée ici, tout est piloté
+      par le dependencyManagement du parent (décision D6).
+
+      Transmission aux consommateurs (transitivité maîtrisée) :
+        - scope `compile` (par défaut) → la dépendance est RÉEXPORTÉE au projet
+          consommateur. C'est volontaire pour Selenium, Serenity, POI, le log ET
+          JUnit 5 : le consommateur n'a PAS à les redéclarer ni à choisir leur
+          version. Les projets consommateurs exécutent leurs tests en JUnit 5,
+          ils héritent donc de JUnit 5 directement du socle.
+      ============================================================================
+    -->
+
+    <parent>
+        <groupId>com.example.qa</groupId>
+        <artifactId>qa-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>qa-socle</artifactId>
+    <packaging>jar</packaging>
+
+    <name>QA Socle</name>
+    <description>Socle d'outils QA custom (WebSync, DataFileManager, QaLogger, TestFailureManager).</description>
+
+    <dependencies>
+        <!-- ========== Imposées et transmises au consommateur (scope compile) ========== -->
+
+        <!-- Selenium : version imposée par le socle. -->
+        <dependency>
+            <groupId>org.seleniumhq.selenium</groupId>
+            <artifactId>selenium-java</artifactId>
+        </dependency>
+
+        <!-- Serenity BDD : version imposée par le socle. -->
+        <dependency>
+            <groupId>net.serenity-bdd</groupId>
+            <artifactId>serenity-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>net.serenity-bdd</groupId>
+            <artifactId>serenity-junit5</artifactId>
+        </dependency>
+
+        <!-- Apache POI : Excel, Excel chiffré (.xlsx protégé) et CSV. -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+        </dependency>
+
+        <!-- Journalisation : façade SLF4J + implémentation Logback. -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+        </dependency>
+
+        <!-- JUnit 5 : transmis au consommateur (scope compile).
+             Le socle l'utilise pour ses propres tests unitaires ET le fournit
+             aux projets consommateurs qui exécutent leurs tests en JUnit 5. -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Exécute les tests unitaires à la phase `test` (avant `package`). -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
