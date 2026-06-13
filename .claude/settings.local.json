@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(code --version)",
-      "Bash(code --list-extensions)"
+      "Bash(code --list-extensions)",
+      "Bash(mvn -v)"
     ]
   }
 }

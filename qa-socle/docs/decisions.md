@@ -302,3 +302,99 @@ dépendent. Donc :
   consommateur, grâce à D15 + activation native) ;
 - **mais** changer le **format de sortie** est un **breaking change** (SemVer), même si aucune ligne
   de code consommateur ne change. À traiter comme l'API publique vis-à-vis du garde-fou (étape 10).
+
+## D6-bis — Versioning : fin de `RELEASE`, Maven Wrapper + Enforcer
+
+**Amende D6** : remplace le mot-clé `RELEASE` par une **version épinglée explicite, bumée par outil**.
+
+### Rationale
+
+`RELEASE`/`LATEST` sont **dépréciés et supprimés dans Maven 4**. Les utiliser aujourd'hui crée une
+bombe à retardement : quand l'org bascule à Maven 4, les 17 consommateurs cassent tous en même temps.
+Il faut abandonner `RELEASE` **pendant qu'on choisit le moment**, pas à la date imposée par l'org.
+
+La vraie promesse de D6 n'était pas « zéro modif » (impossible avec reproductibilité), mais
+« versioning imposé par le socle, centralisé ». On la tient en passant à une **version épinglée +
+montée par outil**, qui est **reproductible, traçable et M4-proof**.
+
+### Décision
+
+- **Abandon de `RELEASE`.**
+- **Parent POM version épinglée** : les consommateurs déclarent `<parent>qa-parent</parent>` avec une
+  `<version>` explicite (ex. `1.0.0`). Une montée de version du socle = une ligne à changer par projet.
+- **Maven Wrapper 3.9.9** : généré via `mvn wrapper:wrapper -Dmaven=3.9.9`. Fichiers `mvnw`/`mvnw.cmd` +
+  `.mvn/wrapper/maven-wrapper.properties`. Tous les builds utilisent **exactement** 3.9.9, indépendant
+  de Maven global (protège contre divergences et la bascule M4 de l'org).
+- **`maven-enforcer-plugin`** dans `qa-parent` (`<build><plugins>`, exécuté par tous) :
+  - `requireMavenVersion [3.9.9,5.0.0)` : enforcer la version basse et permettre M4 ;
+  - `requireJavaVersion [17,)` : enforcer Java 17 minimum ;
+  - `banDynamicVersions` (allow snapshots) : rend impossible la réintroduction de `RELEASE`/`LATEST`/ranges ;
+  - `bannedDependencies` : bannir tous les bindings SLF4J sauf Logback (voir D16-bis).
+
+### Workflow de montée de version
+
+Remplace le flottement silencieux de `RELEASE` par :
+```bash
+mvn versions:update-parent -DnewVersion=X.Y.Z -DgenerateBackupPoms=false
+```
+ou automatisé via **Renovate/Dependabot** (ouvre PR, CI teste, merge). Bénéfices :
+- **Reproductible** : version figée dans git, identique pour tout le monde ;
+- **Traçable** : chaque bump est un commit, revertable ;
+- **Contrôlé** : montée par repo à ton rythme, pas globale imposée ;
+- **M4-safe** : quand l'org bascule, zéro pb (on utilise une version explicite, jamais de métaversion).
+
+### Escape mechanism (D6)
+
+Si un projet doit rester sur une ancienne version du socle : simple non-merge de la PR de bump ou
+`git revert` si déjà merged. C'est mille fois plus clair et traçable que d'inventer un override.
+
+---
+
+## D16-bis — Logs : socle maîtrise la sortie, façade maîtrise le masquage
+
+**Amende D16** : le socle ne délègue *pas* à Logback l'écriture des artefacts d'échec ; il les écrit lui-même en Java.
+
+### Correction des scopes
+
+- **Parent POM (dependencyManagement)** : `logback-classic` en `<scope>runtime</scope>`.
+- **qa-socle** : déclare `slf4j-api` en `compile` (le contrat SLF4J, transmis aux consommateurs) et
+  `logback-classic` en `runtime` (le binding, pour l'exécution, pas polluant la compilation).
+- **Enforcer** (D6-bis) : banni les bindings concurrent (slf4j-simple, log4j-slf4j) → un seul Logback.
+
+**Effet** : uniformité du moteur (tous reçoivent Logback au runtime) sans imposer la compilation,
+pas de conflit avec d'autres bindings, libraire n'impose rien au consommateur côté dépendances
+de compilation.
+
+### Hiérarchie des responsabilités (révision)
+
+| Responsabilité | Porté par | Avant (D16) | **Après (D16-bis)** |
+|---|---|---|---|
+| Accumulation trace par test (source FAIL_) | `QaLogger` (ThreadLocal buffer) | `QaLogger` | **`QaLogger`** (inchangé) |
+| Masquage secrets avant écriture | `QaLogger` (amont) | — | **`QaLogger`** (déjà sa responsabilité) |
+| Écriture des 3 fichiers (`ERROR_`, `FAIL_`, HTML) | Logback appenders | **TestFailureManager en Java** (depuis le buffer masqué) |
+| Format / séparation ERROR_/FAIL_ | Logback config | **TestFailureManager** (codé en Java, identique partout) |
+| Log live (console/fichier pendant le run) | **Logback (config du consommateur)** | Logback | **Logback** (inchangé, hors scope du socle) |
+| Exécution / répertoire / parallélisme | Surefire | Surefire | **Surefire** (inchangé) |
+
+### Bénéfices
+
+- **Uniformité garantie** : les artefacts d'échec sont identiques sur les 17 projets (générés par Java,
+  pas par logback.xml qui peut diverger).
+- **Zéro dépendance à la config du consommateur** : qu'il ait un logback.xml ou pas, ça n'impacte
+  pas les artefacts contractuels.
+- **Masquage garanti** : les artefacts ne sont bâtis QUE depuis le buffer masqué de `QaLogger`,
+  jamais depuis la sortie SLF4J brute (contrairement à un appender Logback qui verrait la sortie
+  non masquée).
+- **Contrat de sortie stable** (cf. D16 « contrat versionné ») : le format `KO__{ENV}__{Test}__{ts}/`
+  + les 3 fichiers ne peuvent changer que si le socle le décide (breaking change), jamais par une
+  divergence de config.
+
+### Optionnel : uniformité du log live (console)
+
+Pour harmoniser aussi la *console* pendant les tests (pas obligatoire pour les artefacts) :
+- Livrer un fragment includable **`qa-socle-logback-base.xml`** (pattern d'encodeur standard) que les
+  projets `<include>` en 3 lignes dans leur propre `logback.xml`.
+- L'inclure d'office dans le **gabarit de projet** (pilote, étape 9) → greenfield uniforme.
+- Optionnel pour l'existant → aucune obligation, zéro conflit.
+
+---

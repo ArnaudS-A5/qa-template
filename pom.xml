@@ -67,6 +67,7 @@
         <!-- =================== Versions des plugins =================== -->
         <surefire.plugin.version>3.5.2</surefire.plugin.version>
         <compiler.plugin.version>3.13.0</compiler.plugin.version>
+        <enforcer.plugin.version>3.5.0</enforcer.plugin.version>
         <!-- Aligné sur serenity.version : le plugin d'agrégation des rapports
              (mvn serenity:aggregate) doit suivre la version de Serenity. -->
         <serenity.maven.plugin.version>${serenity.version}</serenity.maven.plugin.version>
@@ -117,7 +118,7 @@
                 <version>${commons.compress.version}</version>
             </dependency>
 
-            <!-- Journalisation -->
+            <!-- Journalisation : façade SLF4J (compile) + implémentation Logback (runtime) -->
             <dependency>
                 <groupId>org.slf4j</groupId>
                 <artifactId>slf4j-api</artifactId>
@@ -127,6 +128,7 @@
                 <groupId>ch.qos.logback</groupId>
                 <artifactId>logback-classic</artifactId>
                 <version>${logback.version}</version>
+                <scope>runtime</scope>
             </dependency>
 
             <!-- Tests unitaires (JUnit 5) -->
@@ -160,8 +162,49 @@
                     <artifactId>serenity-maven-plugin</artifactId>
                     <version>${serenity.maven.plugin.version}</version>
                 </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-enforcer-plugin</artifactId>
+                    <version>${enforcer.plugin.version}</version>
+                </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <!-- Enforcer : impose les règles de versioning et de dépendances -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>qa-socle-rules</id>
+                        <goals><goal>enforce</goal></goals>
+                        <configuration>
+                            <rules>
+                                <!-- Maven version : 3.9.9 minimum, < 5.0 (permet M4) -->
+                                <requireMavenVersion>
+                                    <version>[3.9.9,5.0.0)</version>
+                                    <message>Maven 3.9.9+ requis (Wrapper via ./mvnw)</message>
+                                </requireMavenVersion>
+                                <!-- Java version : 17+ -->
+                                <requireJavaVersion>
+                                    <version>[17,)</version>
+                                    <message>Java 17+ requis pour compiler le socle</message>
+                                </requireJavaVersion>
+                                <!-- Un seul binding SLF4J autorisé : Logback (fourni par le socle) -->
+                                <bannedDependencies>
+                                    <excludes>
+                                        <exclude>org.slf4j:slf4j-simple</exclude>
+                                        <exclude>org.apache.logging.log4j:log4j-slf4j-impl</exclude>
+                                        <exclude>org.apache.logging.log4j:log4j-slf4j2-impl</exclude>
+                                    </excludes>
+                                    <message>Un seul binding SLF4J autorisé : Logback (fourni par le socle, via dépendance runtime)</message>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 
     <!--

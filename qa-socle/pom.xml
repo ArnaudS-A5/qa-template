@@ -62,7 +62,10 @@
             <artifactId>poi-ooxml</artifactId>
         </dependency>
 
-        <!-- Journalisation : façade SLF4J + implémentation Logback. -->
+        <!-- Journalisation : façade SLF4J (compile, transmise aux consommateurs)
+             + implémentation Logback (runtime, présent au runtime sans polluer compile).
+             Cf. D16-bis : uniformité de log via la façade QaLogger, moteur Logback
+             pour le binding mais jamais imposé à la compilation. -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
@@ -70,6 +73,7 @@
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- JUnit 5 : transmis au consommateur (scope compile).
