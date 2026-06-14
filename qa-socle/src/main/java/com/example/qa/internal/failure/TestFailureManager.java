@@ -9,11 +9,13 @@ package com.example.qa.internal.failure;
  * Serenity auto-découvert (ServiceLoader / {@code META-INF/services}) — aucun type public,
  * aucune annotation, aucune référence côté consommateur.
  *
- * <p><b>Délégation</b> : la classe ne porte PAS toute la mécanique. L'écriture, le format et la
- * séparation {@code ERROR_}/{@code FAIL_} sont délégués à <b>Logback</b> ({@code logback.xml}) ;
- * l'exécution et le répertoire de travail à <b>Surefire</b>. Réglages via clés
- * {@code serenity.conf} / system properties (toutes avec défaut : {@code qa.failure.enabled},
- * {@code outputDir}, {@code dumpHtml}, {@code env}...).
+ * <p><b>Répartition</b> (cf. décision D16-bis) : la classe écrit elle-même les 3 fichiers
+ * <b>en Java</b> (depuis le buffer masqué de {@code QaLogger}) — format, séparation
+ * {@code ERROR_}/{@code FAIL_} et nommage du dossier {@code KO__} <b>identiques sur les 17 projets</b>,
+ * indépendamment de leur {@code logback.xml}. <b>Logback</b> ne gère que le <i>log live</i>
+ * (console / fichier courant pendant le run) ; <b>Surefire</b> gère l'exécution et le répertoire de
+ * travail. Réglages via clés {@code serenity.conf} / system properties (toutes avec défaut :
+ * {@code qa.failure.enabled}, {@code outputDir}, {@code dumpHtml}, {@code env}...).
  *
  * <p>Squelette vide — signatures réelles à fournir (étape 6).
  */
