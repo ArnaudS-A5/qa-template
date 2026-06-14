@@ -20,11 +20,11 @@ SANS implémentation** (coquilles typées).
 | # | Étape | Dépend de | Statut |
 | --- | --- | --- | --- |
 | 1 | Décider la convention de visibilité (public vs interne) | — | ✅ Fait (D15) |
-| 2 | Politique de versioning & compatibilité (compléter D6) | 1 | 🟡 En cours (D6 acté) |
-| 3 | Stratégie transverse d'erreurs | — (avant 6) | ⬜ À faire |
-| 4 | Stratégie de configuration & cycle de vie | — (avant 6) | ⬜ À faire |
-| 5 | Stratégie de test du socle | — (avant 8) | ⬜ À faire |
-| 6 | Signatures d'API par composant (coquilles typées) + gel de l'API | 1→5 | ⬜ À faire |
+| 2 | Politique de versioning & compatibilité (D6 + D6-bis) | 1 | 🟡 En cours (D6/D6-bis actés, Wrapper + Enforcer en place) |
+| 3 | Stratégie transverse d'erreurs | — (avant 6) | ✅ Fait (D18) |
+| 4 | Configuration & portée/thread-safety des composants | — (avant 6) | ✅ Fait (D19) |
+| 5 | Stratégie de test du socle | — (avant 8) | ✅ Fait (D20) |
+| 6 | Signatures d'API par composant (coquilles typées) + gel de l'API | 1→5 | 🟡 En cours (signatures `sync` posées) |
 | 7 | Cas sécurité : masquage des secrets | 6 | ⬜ À faire |
 | 8 | Implémentation, composant par composant (+ tests) | 5→7 | ⬜ À faire |
 | 9 | Validation pilote sur SNAPSHOT/RC + ajustements | 8 | ⬜ À faire |
@@ -61,18 +61,22 @@ méthode. La placer ici évite un déplacement coûteux de toutes les classes un
 
 ---
 
-## Étape 2 — Politique de versioning & compatibilité (compléter D6)
+## Étape 2 — Politique de versioning & compatibilité (D6 amendée par D6-bis)
 
-**Objectif** : compléter ce qui n'est pas déjà tranché par **D6** (Parent POM + `RELEASE` + SemVer +
-garde-fous + mécanisme d'échappement). Découle de l'étape 1 (on ne versionne que ce qui est public).
+**Objectif** : compléter ce qui n'est pas déjà tranché par **D6 + D6-bis** (Parent POM + **version
+épinglée explicite** — abandon de `RELEASE`, supprimé en Maven 4 — + SemVer + garde-fous + mécanisme
+d'échappement). Découle de l'étape 1 (on ne versionne que ce qui est public).
 
-**Statut : 🟡 En cours** — *le cœur est acté en [D6](decisions.md), ne reste que ci-dessous*
+**Statut : 🟡 En cours** — *cœur acté en [D6](decisions.md)/[D6-bis](decisions.md) ; Wrapper +
+Enforcer en place ; ne reste que ci-dessous*
 
-- [x] SemVer + Parent POM + `RELEASE` + mécanisme d'échappement → **acté en D6**.
+- [x] SemVer + Parent POM + **version épinglée** (abandon `RELEASE`) + mécanisme d'échappement → **acté en D6/D6-bis**.
+- [x] Maven Wrapper 3.9.9 + `maven-enforcer-plugin` (`requireMavenVersion`, `requireJavaVersion`,
+      `banDynamicVersions`, `bannedDependencies`) → **en place (D6-bis)**.
 - [ ] Règle de dépréciation : `@Deprecated` + maintien sur **N** versions (fixer N).
-- [ ] Qui publie une RELEASE et **sur quel critère** (cf. `artifactory-jfrog-settings`).
-- [ ] Définir la **non-régression** qui conditionne une publication (quels tests, comment elle bloque
-      la release — exigée par D6, à expliciter ici ; s'appuie sur l'étape 5).
+- [ ] Qui publie une version et **sur quel critère** (cf. `artifactory-jfrog-settings`).
+- [ ] Non-régression : **quels tests** = tests unitaires socle + projet consommateur dédié (acté
+      **D20**) ; reste **comment elle bloque la release** (gate, lié à la CI Jenkins — D7).
 
 > La **date de gel** de l'API n'est PAS ici : l'API n'existe qu'à l'étape 6 → gel rattaché à sa fin.
 
@@ -83,25 +87,31 @@ garde-fous + mécanisme d'échappement). Découle de l'étape 1 (on ne versionne
 **Objectif** : hiérarchie d'exceptions maison du socle, checked vs unchecked. Préalable aux signatures
 (toute méthode publique déclare ce qu'elle lève). À figer avant l'étape 6.
 
-**Statut : ⬜ À faire**
+**Statut : ✅ Fait** — actée en [D18](decisions.md) ; 5 classes en `api.exception` + test de
+hiérarchie, build vert.
 
-- [ ] Définir l'exception racine du socle (ex. `QaToolkitException`) et sa nature (checked/unchecked).
-- [ ] Dériver les exceptions par domaine (sync, data, secret, reporting...).
-- [ ] Trancher checked vs unchecked et le justifier.
+- [x] Exception racine `QaToolkitException` (concrète, `api.exception`) — **unchecked**.
+- [x] Sous-types par domaine : `SyncException`, `DataFileException`, `SecretException`, `ReportingException`.
+- [x] Unchecked tranché et justifié (stack unchecked + conversion des exceptions tierces *checked* à la
+      frontière ; traduction en `cause`) — cf. D18.
 
 ---
 
-## Étape 4 — Stratégie de configuration & cycle de vie
+## Étape 4 — Configuration & portée/thread-safety des composants
 
-**Objectif** : comment les composants sont configurés (serenity.conf / properties / constructeurs) et
-leur portée (par test / par thread / global), thread-safety vu le parallélisme Serenity. Conditionne
-la forme des constructeurs et donc les signatures.
+**Objectif** : où chaque composant lit sa config et quelle est sa **portée/durée de vie** à l'exécution
+(par test / thread / global), d'où la **thread-safety** vu le parallélisme Serenity. Conditionne la forme
+des constructeurs, donc les signatures. (« Cycle de vie » ≠ publication, cf. D6.)
 
-**Statut : ⬜ À faire**
+**Statut : ✅ Fait** — actée en [D19](decisions.md).
 
-- [ ] Source de configuration : `serenity.conf` / properties / constructeurs (hiérarchie de priorité).
-- [ ] Portée de chaque composant : par test / par thread / global.
-- [ ] Thread-safety vu le parallélisme Serenity (stateless ? ThreadLocal ?).
+- [x] Source de config : **100 % Serenity** (`serenity.conf` / `serenity.properties` + system props),
+      socle **agnostique du fichier** ; aucune couche maison.
+- [x] Portée par composant (WebSync par instance/driver du thread ; data par usage ; secret/reporting
+      singleton stateless ; QaLogger sur ThreadLocal ; TestFailureManager sans état + dossier unique).
+- [x] Thread-safety : règles (aucun `static` mutable partagé, ThreadLocal + `remove()`, immuabilité,
+      confinement driver) + **imposition option α** (ArchUnit dans `qa-socle`, Surefire
+      `dependenciesToScan` piloté par le Parent POM).
 
 ---
 
@@ -111,15 +121,15 @@ la forme des constructeurs et donc les signatures.
 l'implémentation — sinon « + tests » (étape 8) n'est pas actionnable. Définit aussi la base de la
 non-régression exigée par D6 (étape 2).
 
-**Statut : ⬜ À faire**
+**Statut : ✅ Fait** — actée en [D20](decisions.md).
 
-- [ ] `WebSync` / `AbstractSyncManager` : unitaire avec **`WebDriver` mocké** vs intégration avec vrai
-      navigateur (et quel périmètre pour chaque).
-- [ ] `CyberArkApiClient` / `AlmApiClient` : **mock HTTP** (ex. WireMock) pour les appels API, sans
-      serveur réel.
-- [ ] `ExcelFileReaderWriter` / `CsvFileReaderWriter` : **fixtures** de fichiers (Excel chiffré inclus).
-- [ ] `QaLogger` / `TestFailureManager` : vérifier la production des artefacts et le **masquage**.
-- [ ] Acter ce qui compose la **CI de non-régression** (réf. étape 2) et le seuil de couverture visé.
+- [x] **Projet consommateur dédié** comme test principal : exerce le socle contre un **site bidon**
+      (vrai navigateur pour `WebSync` : absences d'éléments, locators changés, timeouts).
+- [x] `CyberArkApiClient` / `AlmApiClient` : **WireMock** (pas de serveur réel).
+- [x] `ExcelFileReaderWriter` / `CsvFileReaderWriter` : **fixtures** de fichiers (Excel chiffré inclus).
+- [x] `QaLogger` / `TestFailureManager` : production des artefacts + **masquage** vérifiés.
+- [x] **CI de non-régression** = tests unitaires socle + projet consommateur dédié, contre chaque
+      version avant publication (réf. étape 2) — pas de socle isolé.
 
 ---
 
@@ -128,37 +138,52 @@ non-régression exigée par D6 (étape 2).
 **Objectif** : passer des classes vides aux vrais contrats. Méthodes, paramètres, types de retour,
 exceptions — **sans corps**. Le vrai moment de conception. S'appuie sur 1→5.
 
-**Statut : ⬜ À faire**
+**Statut : 🟡 En cours** — *signatures `sync` posées (coquilles typées) ; reste data / log / failure /
+secret / reporting + factories + gel.*
 
 - [ ] **Factories publiques** (`api`) pour `data` / `secret` / `reporting` — seul point d'accès aux
       impls `internal` (cf. D15).
-- [ ] `WebSync` (+ `AbstractSyncManager` / `MobileSync`) — signatures de synchro/interaction.
+- [x] `WebSync` (+ `AbstractSyncManager` / `MobileSync`) — signatures de synchro/interaction.
 - [ ] `DataFileManager` (+ `ExcelFileReaderWriter` / `CsvFileReaderWriter`) — lecture/écriture data.
-- [ ] `QaLogger` — signatures de log (façade SLF4J, accumulation par test, masquage).
-- [ ] `TestFailureManager` — capture d'échec (cf. **D16**) :
+- [ ] `QaLogger` — signatures de log (façade SLF4J, accumulation par test, masquage). **Namespace de
+      log stable (ex. `"qa"`), indépendant du base package** (cf. D17).
+- [ ] **Log live (default socle)** — coquille de **`LogbackConfigurator`** (`internal.log`) +
+      `logback-socle.xml` (resource du jar, cible le namespace stable `"qa"` — pas le package, cf. D17)
+      + déclaration `META-INF/services/ch.qos.logback.classic.spi.Configurator` (cf. **D16-bis**).
+      Mécanisme auto-activé, **aucun type public**, surchargeable par un `logback.xml` local.
+- [ ] `TestFailureManager` — capture d'échec (cf. **D16** + **D16-bis**) :
   - [ ] activation **native** via ServiceLoader (`StepListener` Serenity) — **aucun type public,
         aucune annotation** ;
-  - [ ] **déléguer** l'écriture/format/séparation `ERROR_`/`FAIL_` à **Logback** (`logback.xml`) et
-        l'exécution/répertoire à **Surefire** — la classe reste un orchestrateur mince ;
+  - [ ] **écrire les 3 fichiers en Java** (`ERROR_`/`FAIL_` + dump HTML) depuis le buffer masqué de
+        `QaLogger` — format/nommage identiques sur les 17 projets (cf. **D16-bis**) ; **Logback** ne
+        gère que le *log live*, **Surefire** l'exécution/répertoire ;
   - [ ] définir les **clés de config** (`serenity.conf` / system properties) avec **valeurs par
         défaut** : `enabled` (opt-out), `outputDir`, `dumpHtml`, `env`... (noms à figer ici) ;
   - [ ] graver le **contrat de sortie** (`KO__...` + 3 fichiers, cf. D8) comme contrat versionné.
-- [ ] `SecretManager` (+ `CyberArkApiClient`) — récupération de secrets.
+- [ ] `SecretManager` (+ `CyberArkApiClient`) — récupération de secrets **+ contrat « valeur
+      sensible »** (déclaration d'un secret à masquer) : **seule signature publique du masquage**,
+      figée ici, **avant le gel** (la politique/intégration vient en étape 7, sans nouvelle signature).
 - [ ] `ReportingManager` (+ `AlmApiClient`) — remontée résultats ALM.
-- [ ] **Fixer la date de gel de l'API** une fois toutes les signatures arrêtées (réf. étape 2).
+- [ ] **Fixer la date de gel de l'API** une fois toutes les signatures arrêtées — **y compris la
+      signature de masquage de `SecretManager`** (réf. étapes 2 et 7).
 
 ---
 
 ## Étape 7 — Cas sécurité : masquage des secrets
 
-**Objectif** : règle de masquage des secrets dans `QaLogger` + `TestFailureManager` (jamais dans
-logs/dumps), définie au niveau des signatures. Isolé car risque OWASP.
+**Objectif** : la **politique** de masquage des secrets (jamais de secret en clair dans logs/dumps),
+son **intégration interne** et ses **tests**. Isolé car risque OWASP. ⚠️ **Aucune nouvelle signature
+publique ici** : la seule signature concernée (contrat « valeur sensible » de `SecretManager`) est
+figée en **étape 6, avant le gel**.
 
 **Statut : ⬜ À faire**
 
-- [ ] Définir le contrat de masquage exposé par `SecretManager` (ex. enregistrement des valeurs sensibles).
-- [ ] Intégrer le masquage dans les signatures de `QaLogger` (jamais de secret en clair).
-- [ ] Intégrer le masquage dans `TestFailureManager` (dumps/logs d'échec).
+- [ ] Définir la **règle de masquage** : quoi masquer, comment (motif/longueur révélée), à quel moment
+      (en amont de toute écriture).
+- [ ] Intégrer le masquage dans le **comportement interne** de `QaLogger` (masquage avant écriture du
+      buffer) — **sans changer ses signatures publiques** (figées en 6).
+- [ ] Intégrer le masquage dans `TestFailureManager` (`internal`, dumps/logs d'échec).
+- [ ] **Tests** : aucun secret en clair dans les 3 artefacts `KO__` ni dans le log live.
 
 ---
 
@@ -172,6 +197,10 @@ logs/dumps), définie au niveau des signatures. Isolé car risque OWASP.
 - [ ] `WebSync` (cœur : fluentWait + flag JS) + tests comportementaux.
 - [ ] `DataFileManager` (Excel/CSV) + tests.
 - [ ] `QaLogger` / `TestFailureManager` + tests.
+- [ ] `LogbackConfigurator` (`internal.log`) + `logback-socle.xml` (default socle) + test :
+      default appliqué sans `logback.xml` local, surcharge locale prioritaire.
+- [ ] **Garde-fou thread-safety (D19/α)** : règle ArchUnit (« pas de `static` non-`final` ») dans
+      `qa-socle` + config Surefire `dependenciesToScan` dans le Parent POM (héritée par les consommateurs).
 - [ ] `CyberArkApiClient` + tests.
 - [ ] `AlmApiClient` + tests.
 

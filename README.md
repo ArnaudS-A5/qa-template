@@ -11,6 +11,7 @@ consommé **comme dépendance Maven** par les ~17 projets de tests de l'équipe
 
 - [Structure du dépôt](#structure-du-dépôt)
 - [Build](#build)
+- [Adoption (personnalisation)](#adoption-personnalisation)
 - [Stack & contexte](#stack--contexte)
 - [Architecture du socle](#architecture-du-socle)
 - [Convention de nommage des résultats de tests](#convention-de-nommage-des-résultats-de-tests)
@@ -35,6 +36,20 @@ mvn clean test    # depuis la racine du dépôt
 Le POM racine (`qa-parent`) est l'agrégateur : il builde l'ensemble du socle. `qa-socle` en hérite
 (aucune version déclarée dans les modules, tout est piloté par le `dependencyManagement` du parent).
 
+## Adoption (personnalisation)
+
+`qa-template` est un **squelette réutilisable** : le base package et le `groupId` Maven
+`com.example.qa` sont des **placeholders volontaires** (cf. [D17](qa-socle/docs/decisions.md)), à
+personnaliser **au clone**, avant tout gel d'API ou release. Trois gestes, une fois :
+
+1. **Renommer le base package** `com.example.qa` → `<votre.package>` via le refactor IDE
+   *« Rename package »* (met à jour déclarations + imports + dossiers, et le fichier
+   `META-INF/services/...` à venir).
+2. **Changer le `groupId`** dans les 2 POM : `pom.xml` (`<groupId>`) et `qa-socle/pom.xml`
+   (`<parent><groupId>`).
+3. **Rien d'autre** : les configs runtime du socle sont *package-agnostiques* par design
+   (`QaLogger` loggue sous un namespace stable `"qa"`) → aucune string de resource à toucher.
+
 ## Stack & contexte
 
 | Dimension | Choix |
@@ -45,7 +60,7 @@ Le POM racine (`qa-parent`) est l'agrégateur : il builde l'ensemble du socle. `
 | Build / dépôt | **Maven**, **Git/Bitbucket**, **Artifactory JFrog** (`settings.xml`) |
 | CI | **Jenkins** (cible) — géré par une **autre équipe** (collaboration) |
 | Exécution | Local (WebDriver direct) prioritaire ; **Selenium Grid/Selenoid** dispo ; **BrowserStack** en attente de licences |
-| Versioning | **Parent POM + version `RELEASE`** chez les consommateurs (décision D6) |
+| Versioning | **Parent POM + version épinglée explicite** (une ligne à bumper par projet) — décision **D6-bis** (amende D6 : abandon de `RELEASE`, supprimé en Maven 4) |
 | Mobile | **Appium** anticipé (à venir) |
 
 ## Architecture du socle
@@ -57,10 +72,11 @@ non contractuels), cf. décision [D15](qa-socle/docs/decisions.md).
 |---|---|---|---|
 | `sync` | `WebSync`, `MobileSync` | `AbstractSyncManager` | synchronisation robuste (fluentWait + flag JS) |
 | `data` | `DataFileManager` | `AbstractDataFileManager`, `ExcelFileReaderWriter`, `CsvFileReaderWriter` | données de test Excel/CSV (lecture + écriture) |
-| `log` | `QaLogger` | — | journalisation aux points clés (façade SLF4J) |
+| `log` | `QaLogger` | `LogbackConfigurator` *(à venir, étape 6 — D16-bis)* | journalisation (façade SLF4J) + default Logback imposé par la présence du jar, surchargeable |
 | `failure` | *(hook à venir, étape 6)* | `TestFailureManager` | artefacts d'échec (logs + dump HTML) |
 | `secret` | `SecretManager` | `CyberArkApiClient` | récupération de secrets au runtime (D12) |
 | `reporting` | `ReportingManager` | `AlmApiClient` | remontée des résultats vers ALM (D13) |
+| `exception` | `QaToolkitException` + `SyncException` / `DataFileException` / `SecretException` / `ReportingException` | — | hiérarchie d'erreurs **unchecked** (D18) ; traduit les exceptions tierces en conservant la `cause` |
 
 Les impls `internal` seront obtenues via des **factories publiques** (créées à l'étape 6 de la roadmap),
 jamais par `new` direct côté consommateur.
@@ -88,7 +104,7 @@ KO__{ENV}__{NomDuTest}__{yyyy-MM-dd_HH-mm-ss}/
 
 ## Documentation
 
-- [Décisions d'architecture actées](qa-socle/docs/decisions.md) (D1–D13)
+- [Décisions d'architecture actées](qa-socle/docs/decisions.md) (D1–D20, amendées par D6-bis et D16-bis)
 - [Feuille de route de construction](qa-socle/docs/roadmap.md) (10 étapes)
 - [Gouvernance Git flow](qa-socle/docs/git-flow.md) (`master` + `develop` + branches de travail)
 
