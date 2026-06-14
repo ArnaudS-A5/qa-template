@@ -20,11 +20,12 @@ qa-results-tracking/
 *.ipr
 *.iws
 
-# IDE — VS Code (on garde la config partagée éventuelle, on ignore le local)
-.vscode/*
-!.vscode/settings.json
-!.vscode/launch.json
-!.vscode/extensions.json
+# IDE — VS Code (config locale, hors suivi)
+.vscode/
+
+# Config assistants / outils (Copilot, Claude) — externalisée, hors suivi du socle
+.github/
+.claude/
 
 # IDE — Eclipse
 .project
