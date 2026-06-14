@@ -190,6 +190,18 @@
                                     <version>[17,)</version>
                                     <message>Java 17+ requis pour compiler le socle</message>
                                 </requireJavaVersion>
+                                <!-- Interdit les métaversions RELEASE / LATEST (les SEULES
+                                     supprimées en Maven 4) : rend impossible la réintroduction du
+                                     versioning dynamique abandonné (décision D6-bis).
+                                     - allowSnapshots : SNAPSHOT toléré (développement + pilotes RC) ;
+                                     - allowRanges : les version ranges restent valides en Maven 4 et
+                                       sont imposés transitivement par des tiers (Serenity -> cucumber
+                                       -> io.cucumber:query [12.2.0,13.0.0)) -> les bannir sur tout
+                                       l'arbre est impossible et hors objectif. -->
+                                <banDynamicVersions>
+                                    <allowSnapshots>true</allowSnapshots>
+                                    <allowRanges>true</allowRanges>
+                                </banDynamicVersions>
                                 <!-- Un seul binding SLF4J autorisé : Logback (fourni par le socle) -->
                                 <bannedDependencies>
                                     <excludes>
