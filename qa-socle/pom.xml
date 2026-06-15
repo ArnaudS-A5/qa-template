@@ -31,7 +31,7 @@
     <packaging>jar</packaging>
 
     <name>QA Socle</name>
-    <description>Socle d'outils QA custom (WebSync, DataFileManager, QaLogger, TestFailureManager).</description>
+    <description>Socle d'outils QA custom (WebSync, DataFileManager, TestFailureManager).</description>
 
     <dependencies>
         <!-- ========== Imposées et transmises au consommateur (scope compile) ========== -->
@@ -62,10 +62,12 @@
             <artifactId>poi-ooxml</artifactId>
         </dependency>
 
-        <!-- Journalisation : façade SLF4J (compile, transmise aux consommateurs)
+        <!-- Journalisation : API SLF4J (compile, transmise aux consommateurs)
              + implémentation Logback (runtime, présent au runtime sans polluer compile).
-             Cf. D16-bis : uniformité de log via la façade QaLogger, moteur Logback
-             pour le binding mais jamais imposé à la compilation. -->
+             Cf. D16-bis : pas de façade de log maison (QaLogger supprimée) — le log
+             d'action passe par SLF4J natif ; l'uniformité vient du default Logback du
+             socle (LogbackConfigurator). Logback reste le binding sans être imposé à
+             la compilation. -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>

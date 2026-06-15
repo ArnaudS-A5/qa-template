@@ -10,12 +10,13 @@ package com.example.qa.internal.failure;
  * aucune annotation, aucune référence côté consommateur.
  *
  * <p><b>Répartition</b> (cf. décision D16-bis) : la classe écrit elle-même les 3 fichiers
- * <b>en Java</b> (depuis le buffer masqué de {@code QaLogger}) — format, séparation
- * {@code ERROR_}/{@code FAIL_} et nommage du dossier {@code KO__} <b>identiques sur les 17 projets</b>,
- * indépendamment de leur {@code logback.xml}. <b>Logback</b> ne gère que le <i>log live</i>
- * (console / fichier courant pendant le run) ; <b>Surefire</b> gère l'exécution et le répertoire de
- * travail. Réglages via clés {@code serenity.conf} / system properties (toutes avec défaut :
- * {@code qa.failure.enabled}, {@code outputDir}, {@code dumpHtml}, {@code env}...).
+ * <b>en Java</b>, à partir des {@code TestStep} du {@code TestOutcome} <b>Serenity</b> (historique des
+ * steps + exception), en <b>appliquant le masquage</b> des valeurs sensibles à la sérialisation —
+ * format, séparation {@code ERROR_}/{@code FAIL_} et nommage du dossier {@code KO__} <b>identiques sur
+ * les 17 projets</b>, indépendamment de leur {@code logback.xml}. <b>Logback</b> ne gère que le
+ * <i>log live</i> (console / fichier courant pendant le run) ; <b>Surefire</b> gère l'exécution et le
+ * répertoire de travail. Réglages via clés {@code serenity.conf} / system properties (toutes avec
+ * défaut : {@code qa.failure.enabled}, {@code outputDir}, {@code dumpHtml}, {@code env}...).
  *
  * <p>Squelette vide — signatures réelles à fournir (étape 6).
  */
