@@ -2,7 +2,6 @@ package com.example.qa.internal.secret;
 
 import com.example.qa.api.secret.Secret;
 import com.example.qa.api.secret.SecretManager;
-import com.example.qa.api.secret.SecretRequest;
 
 /**
  * Récupération de secrets via l'API REST CyberArk : construction de l'URL à partir
@@ -16,7 +15,12 @@ import com.example.qa.api.secret.SecretRequest;
 public class CyberArkApiClient implements SecretManager {
 
 	@Override
-	public Secret getSecret(SecretRequest request) {
+	public Secret getSecret(String name) {
+		return null;
+	}
+
+	@Override
+	public Secret getSecret(String safe, String object) {
 		return null;
 	}
 }

@@ -12,17 +12,33 @@ package com.example.qa.api.secret;
  * explicite à {@code Secret.value()} — typiquement par {@code WebSync.type(By, Secret)} pour remplir
  * un champ. C'est la <b>prévention à la source</b> du masquage (étape 7).
  *
+ * <p><b>Désignation du secret</b> : les <b>coordonnées d'infrastructure</b> du fournisseur (ex. CyberArk
+ * {@code AppID} / {@code Safe} / {@code Folder}) sont de la <b>configuration</b> ({@code serenity.conf},
+ * D19), résolues par l'implémentation — elles ne fuitent pas dans le code de test. Le test ne fournit
+ * que ce qui <b>identifie</b> le secret voulu : un {@code name} logique (cas courant), ou un couple
+ * {@code (safe, object)} quand plusieurs coffres doivent être ciblés depuis le code. Aucun type
+ * spécifique au fournisseur n'apparaît dans le contrat (D12) — d'où l'abandon d'un objet requête.
+ *
  * <p>Squelette — signatures arrêtées (étape 6), corps réel à fournir (étape 8).
  */
 public interface SecretManager {
 
 	/**
-	 * Récupère un secret auprès du fournisseur configuré.
+	 * Récupère le secret identifié par un <b>nom logique</b> ; les coordonnées d'infrastructure
+	 * (AppID/Safe/Folder) viennent de la configuration (D19).
 	 *
-	 * @param request requête <b>neutre</b> décrivant le secret à récupérer (les paramètres spécifiques
-	 *                au fournisseur, ex. CyberArk AppID/Safe/Folder/Object, restent internes à l'impl —
-	 *                cf. D12) ; type à étoffer lors du traitement du composant {@code secret}
+	 * @param name nom logique du secret (ex. {@code "db-compte-batch"})
 	 * @return le secret, encapsulé dans un {@link Secret} (masqué par défaut)
 	 */
-	Secret getSecret(SecretRequest request);
+	Secret getSecret(String name);
+
+	/**
+	 * Récupère un secret en ciblant explicitement un <b>coffre</b> et un <b>objet</b> (cas multi-Safe
+	 * piloté depuis le code) ; les autres coordonnées (AppID/Folder) restent en configuration (D19).
+	 *
+	 * @param safe   coffre/Safe à interroger
+	 * @param object objet/compte recherché dans le coffre
+	 * @return le secret, encapsulé dans un {@link Secret} (masqué par défaut)
+	 */
+	Secret getSecret(String safe, String object);
 }
