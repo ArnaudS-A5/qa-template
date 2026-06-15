@@ -55,8 +55,8 @@ méthode. La placer ici évite un déplacement coûteux de toutes les classes un
 
 - [x] Convention retenue : sous-arbres `com.example.qa.api.<domaine>` / `internal.<domaine>`, frontière
       contrôlée par outil (japicmp étape 10), **sans JPMS**.
-- [x] Types existants classés api/internal (cf. tableau D15) : interfaces + `WebSync`/`MobileSync` +
-      `QaLogger` en `api` ; abstraits, impls et `TestFailureManager` en `internal`.
+- [x] Types existants classés api/internal (cf. tableau D15) : interfaces + `WebSync`/`MobileSync` en
+      `api` ; abstraits, impls et `TestFailureManager` en `internal`.
 - [x] Décision actée dans `decisions.md` (D15).
 
 ---
@@ -108,10 +108,10 @@ des constructeurs, donc les signatures. (« Cycle de vie » ≠ publication, cf.
 - [x] Source de config : **100 % Serenity** (`serenity.conf` / `serenity.properties` + system props),
       socle **agnostique du fichier** ; aucune couche maison.
 - [x] Portée par composant (WebSync par instance/driver du thread ; data par usage ; secret/reporting
-      singleton stateless ; QaLogger sur ThreadLocal ; TestFailureManager sans état + dossier unique).
-- [x] Thread-safety : règles (aucun `static` mutable partagé, ThreadLocal + `remove()`, immuabilité,
-      confinement driver) + **imposition option α** (ArchUnit dans `qa-socle`, Surefire
-      `dependenciesToScan` piloté par le Parent POM).
+      singleton stateless ; log d'action sans état — SLF4J natif ; TestFailureManager sans état + dossier unique).
+- [x] Thread-safety : règles (aucun `static` mutable partagé, état par test délégué à Serenity — pas de
+      buffer maison, immuabilité, confinement driver) + **imposition option α** (ArchUnit dans
+      `qa-socle`, Surefire `dependenciesToScan` piloté par le Parent POM).
 
 ---
 
@@ -127,7 +127,8 @@ non-régression exigée par D6 (étape 2).
       (vrai navigateur pour `WebSync` : absences d'éléments, locators changés, timeouts).
 - [x] `CyberArkApiClient` / `AlmApiClient` : **WireMock** (pas de serveur réel).
 - [x] `ExcelFileReaderWriter` / `CsvFileReaderWriter` : **fixtures** de fichiers (Excel chiffré inclus).
-- [x] `QaLogger` / `TestFailureManager` : production des artefacts + **masquage** vérifiés.
+- [x] `TestFailureManager` (depuis le `TestOutcome` Serenity) : production des artefacts + **masquage**
+      (type `Secret`) vérifiés.
 - [x] **CI de non-régression** = tests unitaires socle + projet consommateur dédié, contre chaque
       version avant publication (réf. étape 2) — pas de socle isolé.
 
@@ -145,18 +146,21 @@ secret / reporting + factories + gel.*
       impls `internal` (cf. D15).
 - [x] `WebSync` (+ `AbstractSyncManager` / `MobileSync`) — signatures de synchro/interaction.
 - [ ] `DataFileManager` (+ `ExcelFileReaderWriter` / `CsvFileReaderWriter`) — lecture/écriture data.
-- [ ] `QaLogger` — signatures de log (façade SLF4J, accumulation par test, masquage). **Namespace de
-      log stable (ex. `"qa"`), indépendant du base package** (cf. D17).
+- [x] ~~`QaLogger`~~ — **classe supprimée** (étape 6) : aucune valeur ajoutée vs SLF4J natif. Le log
+      d'action de synchro est émis par `WebSync`/`MobileSync` via un `org.slf4j.Logger` natif sous le
+      **namespace stable `"qa"`** (cf. D17/D14 corrigé). Masquage assuré par le type `Secret`.
 - [ ] **Log live (default socle)** — coquille de **`LogbackConfigurator`** (`internal.log`) +
       `logback-socle.xml` (resource du jar, cible le namespace stable `"qa"` — pas le package, cf. D17)
       + déclaration `META-INF/services/ch.qos.logback.classic.spi.Configurator` (cf. **D16-bis**).
-      Mécanisme auto-activé, **aucun type public**, surchargeable par un `logback.xml` local.
+      Mécanisme auto-activé, **aucun type public**, surchargeable par un `logback.xml` local. Porte le
+      namespace `"qa"` + la clé `qa.logger.level` (défaut `WARN`).
 - [ ] `TestFailureManager` — capture d'échec (cf. **D16** + **D16-bis**) :
   - [ ] activation **native** via ServiceLoader (`StepListener` Serenity) — **aucun type public,
         aucune annotation** ;
-  - [ ] **écrire les 3 fichiers en Java** (`ERROR_`/`FAIL_` + dump HTML) depuis le buffer masqué de
-        `QaLogger` — format/nommage identiques sur les 17 projets (cf. **D16-bis**) ; **Logback** ne
-        gère que le *log live*, **Surefire** l'exécution/répertoire ;
+  - [ ] **écrire les 3 fichiers en Java** (`ERROR_`/`FAIL_` + dump HTML) depuis le **`TestOutcome`
+        Serenity** (`getTestSteps()` + `TestStep.getException()`), en appliquant le masquage des
+        valeurs sensibles — format/nommage identiques sur les 17 projets (cf. **D16-bis**) ; **Logback**
+        ne gère que le *log live*, **Surefire** l'exécution/répertoire ;
   - [ ] définir les **clés de config** (`serenity.conf` / system properties) avec **valeurs par
         défaut** : `enabled` (opt-out), `outputDir`, `dumpHtml`, `env`... (noms à figer ici) ;
   - [ ] graver le **contrat de sortie** (`KO__...` + 3 fichiers, cf. D8) comme contrat versionné.
@@ -180,8 +184,8 @@ figée en **étape 6, avant le gel**.
 
 - [ ] Définir la **règle de masquage** : quoi masquer, comment (motif/longueur révélée), à quel moment
       (en amont de toute écriture).
-- [ ] Intégrer le masquage dans le **comportement interne** de `QaLogger` (masquage avant écriture du
-      buffer) — **sans changer ses signatures publiques** (figées en 6).
+- [ ] Implémenter le **masquage à la source** dans le type `Secret` (`masked()` / `sha256Prefix()` /
+      `toString()`) — **sans changer sa signature publique** (figée en 6).
 - [ ] Intégrer le masquage dans `TestFailureManager` (`internal`, dumps/logs d'échec).
 - [ ] **Tests** : aucun secret en clair dans les 3 artefacts `KO__` ni dans le log live.
 
@@ -196,7 +200,7 @@ figée en **étape 6, avant le gel**.
 
 - [ ] `WebSync` (cœur : fluentWait + flag JS) + tests comportementaux.
 - [ ] `DataFileManager` (Excel/CSV) + tests.
-- [ ] `QaLogger` / `TestFailureManager` + tests.
+- [ ] `TestFailureManager` (depuis le `TestOutcome` Serenity) + tests.
 - [ ] `LogbackConfigurator` (`internal.log`) + `logback-socle.xml` (default socle) + test :
       default appliqué sans `logback.xml` local, surcharge locale prioritaire.
 - [ ] **Garde-fou thread-safety (D19/α)** : règle ArchUnit (« pas de `static` non-`final` ») dans

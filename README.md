@@ -22,7 +22,7 @@ consommé **comme dépendance Maven** par les ~17 projets de tests de l'équipe
 
 ```
 pom.xml         # Parent POM (qa-parent) : centralise versions (dépendances + plugins), agrégateur
-qa-socle/       # La librairie socle (jar) : WebSync, DataFileManager, QaLogger, TestFailureManager...
+qa-socle/       # La librairie socle (jar) : WebSync, DataFileManager, TestFailureManager...
   └── docs/     # Décisions d'architecture, feuille de route, gouvernance Git
 .github/        # Config Copilot (agents + skills) — annexe, à externaliser (voir plus bas)
 ```
@@ -48,7 +48,7 @@ personnaliser **au clone**, avant tout gel d'API ou release. Trois gestes, une f
 2. **Changer le `groupId`** dans les 2 POM : `pom.xml` (`<groupId>`) et `qa-socle/pom.xml`
    (`<parent><groupId>`).
 3. **Rien d'autre** : les configs runtime du socle sont *package-agnostiques* par design
-   (`QaLogger` loggue sous un namespace stable `"qa"`) → aucune string de resource à toucher.
+   (le log d'action écrit sous un namespace stable `"qa"`) → aucune string de resource à toucher.
 
 ## Stack & contexte
 
@@ -72,9 +72,9 @@ non contractuels), cf. décision [D15](qa-socle/docs/decisions.md).
 |---|---|---|---|
 | `sync` | `WebSync`, `MobileSync` | `AbstractSyncManager` | synchronisation robuste (fluentWait + flag JS) |
 | `data` | `DataFileManager` | `AbstractDataFileManager`, `ExcelFileReaderWriter`, `CsvFileReaderWriter` | données de test Excel/CSV (lecture + écriture) |
-| `log` | `QaLogger` | `LogbackConfigurator` *(à venir, étape 6 — D16-bis)* | journalisation (façade SLF4J) + default Logback imposé par la présence du jar, surchargeable |
+| `log` | *(aucun type public — log d'action via SLF4J natif)* | `LogbackConfigurator` *(à venir, étape 6 — D16-bis)* | default Logback (namespace `"qa"`, clé `qa.logger.level`) imposé par la présence du jar, surchargeable ; **pas de façade maison** |
 | `failure` | *(hook à venir, étape 6)* | `TestFailureManager` | artefacts d'échec (logs + dump HTML) |
-| `secret` | `SecretManager` | `CyberArkApiClient` | récupération de secrets au runtime (D12) |
+| `secret` | `SecretManager`, `Secret` | `CyberArkApiClient` | récupération de secrets au runtime + valeur sensible auto-masquée (D12) |
 | `reporting` | `ReportingManager` | `AlmApiClient` | remontée des résultats vers ALM (D13) |
 | `exception` | `QaToolkitException` + `SyncException` / `DataFileException` / `SecretException` / `ReportingException` | — | hiérarchie d'erreurs **unchecked** (D18) ; traduit les exceptions tierces en conservant la `cause` |
 
