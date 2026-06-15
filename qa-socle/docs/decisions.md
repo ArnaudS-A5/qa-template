@@ -17,6 +17,12 @@ des projets et reste invisible. Aucune skill de migration n'est nécessaire.
 
 - Hiérarchie : **`AbstractSyncManager`** (moteur commun `fluentWait` + flag JS) →
   **`WebSync`** (web, WebDriver) / **`MobileSync`** (mobile, Appium).
+- **But produit** : exposer aux projets consommateurs une surface familière proche de `WebElement`
+  / `WebElementFacade`, mais avec une **synchronisation intégrée à chaque méthode**. Un appel
+  `webSync.click(by)`, `selectByLabel(by, label)` ou `getText(by)` ne doit jamais dépendre d'un
+  `WebElement` capturé à l'instant T : le locator est réévalué dans une boucle de polling jusqu'à ce
+  que l'élément soit réellement présent/interactable/lisible, puis l'opération native est déléguée à
+  Selenium/Serenity.
 - **`fluentWait` = le cœur de la synchro** (pièce maîtresse, pas une simple signature). C'est une
   **vraie méthode d'attente** dont le contrat d'implémentation (étape 8) est :
   - un **timeout** (délai maximal d'attente) ;
@@ -27,7 +33,8 @@ des projets et reste invisible. Aucune skill de migration n'est nécessaire.
     `ElementNotInteractableException`, `ElementClickInterceptedException` *(liste à compléter si
     besoin à l'implémentation)*.
 - **Règle absolue** : **toute** action/lecture/état rattaché à un élément (le périmètre `WebElement`)
-  passe **systématiquement** par `fluentWait`. Aucune interaction directe hors de ce moteur.
+  passe **systématiquement** par `fluentWait`. Aucune interaction directe hors de ce moteur, aucun
+  `WebElement` vivant conservé entre deux steps.
 - Méthode complémentaire : **flag JavaScript injecté** (un simple drapeau, pas du code applicatif).
   Sa disparition signale un chargement/re-render en cours ; on poll l'élément cible jusqu'au timeout.
 - Justification : SPA Angular/React/Vue avec mutations du DOM **sans** changement d'URL ni de state.
@@ -42,7 +49,8 @@ Acté lors de l'écriture des signatures (étape 6), **sans renier le `fluentWai
   Il vit dans `AbstractSyncManager`, est **`protected`** (hérité, donc plus « privé » comme prévu
   initialement) et **n'est jamais réimplémenté** par les sous-classes — écrit **une seule fois**.
   *État actuel : coquille typée renvoyant `null` ; le corps réel (spec ci-dessus) est l'étape 8.*
-- **À l'intérieur** du `fluentWait`, l'action ne manipule **pas** du `WebElement` Selenium brut : elle
+- **À l'intérieur** du `fluentWait`, l'action ne manipule **pas** durablement un `WebElement` Selenium
+  brut : elle ré-résout le `By`, puis
   **délègue à l'API publique Serenity `WebElementFacade`** (résolue par `By` via `$(By)` /
   `wrapWebElement`). On **réutilise** ainsi, sans réinventer ni forker : le retry intégré des éléments
   « pas prêts » (`NUMBER_OF_TRIES_FOR_UNREADY_ELEMENTS = 12`), l'absorption de
@@ -57,6 +65,9 @@ Acté lors de l'écriture des signatures (étape 6), **sans renier le `fluentWai
   géométrie, collections `count`/`getTexts`, attentes). `WebSync` n'ajoute que le **spécifique web**
   (`submit`, double/contextClick, `<select>` HTML, CSS, focus fenêtre…). Les `WebElement`/`Select`
   natifs restent **encapsulés** (pas de `WebElementManager`).
+- **Non-objectif** : réimplémenter Selenium/Serenity. Le socle les **compose** pour fournir une API
+  de test plus stable : mêmes opérations attendues par les PageObjects, mais synchronisées,
+  masquées et diagnostiquées de façon uniforme.
 
 ### Messages d'erreur différenciés (alimentent `TestFailureManager` et l'auto-fix)
 
@@ -105,12 +116,15 @@ Acté lors de l'écriture des signatures (étape 6), **sans renier le `fluentWai
 > abstract justifiée par l'arrivée du mobile, sans interface car les impls ne sont pas
 > interchangeables entre elles).
 
-## D6 — Dépendance & versioning : Parent POM + RELEASE
+## D6 — Dépendance & versioning : Parent POM + RELEASE (historique, remplacée par D6-bis)
+
+> **Statut** : décision conservée pour mémoire. Elle est **remplacée par D6-bis**, qui abandonne le
+> mot-clé Maven `RELEASE` au profit d'une version épinglée explicite et d'une montée par outil.
 
 - Les projets consommateurs **héritent d'un Parent POM** (`qa-parent`).
-- La version du socle est référencée en **`RELEASE`** (dernière version stable) → **zéro modification**
-  dans les projets lors d'une montée de version.
-- Garde-fous **obligatoires** pour compenser la non-reproductibilité du `RELEASE` :
+- La version du socle était référencée en **`RELEASE`** (dernière version stable) avec l'objectif
+  initial de ne modifier aucun projet lors d'une montée de version.
+- Garde-fous qui étaient **obligatoires** dans ce scénario pour compenser la non-reproductibilité du `RELEASE` :
   - **SemVer strict** : jamais de breaking change en mineur/patch.
   - **CI de non-régression** du socle **avant** toute publication de release.
   - **Mécanisme d'échappement** : possibilité de figer ponctuellement un projet sur une version précise en cas d'incident.
@@ -154,8 +168,8 @@ Le Git flow est documenté en Markdown pour être consommable par l'agent.
   des secrets sans impacter les projets appelants :
   - `interface SecretManager` — contrat **neutre** : `Secret getSecret(String name)` (nom logique,
     cas courant) et `Secret getSecret(String safe, String object)` (cas multi-coffre piloté depuis le
-    code). Seule dépendance des projets appelants ; retourne un `Secret` (valeur **auto-masquée**, cf.
-    étape 7), jamais un `String` nu.
+    code). Seule dépendance des projets appelants ; retourne un `Secret` (contrat de valeur sensible,
+    masquage à implémenter en étape 7), jamais un `String` nu.
   - `CyberArkApiClient implements SecretManager` — implémentation concrète : reconstruction de l'URL
     de l'API REST CyberArk à partir des paramètres, appel HTTP, extraction du mot de passe de la
     charge JSON retournée.
@@ -244,9 +258,10 @@ La classe avait été créée comme **façade SLF4J** pour porter trois besoins.
    `TestOutcome.getTestSteps()` (historique) et `TestStep.getException()`/`getErrorMessage()` (erreur).
    `TestFailureManager` lit **directement** ces structures (même principe que la réutilisation de
    `WebElementFacade`). Pas de buffer maison.
-2. **Masquage des secrets** → **déplacé** : assuré par **prévention à la source** via le type
-   `Secret` (auto-masqué, `api.secret`) + application du masquage par `TestFailureManager` à la
-   sérialisation des `TestStep`. Plus besoin d'un point d'interception dans un logger.
+2. **Masquage des secrets** → **déplacé** : porté par **prévention à la source** via le type
+   `Secret` (`api.secret`, signatures posées ; implémentation du masquage en étape 7) + application
+   du masquage par `TestFailureManager` à la sérialisation des `TestStep`. Plus besoin d'un point
+   d'interception dans un logger.
 3. **Log d'action de synchro en live** (dernier rôle restant) → ne justifie **pas** une classe : une
    façade qui ne fait que ré-exposer `LoggerFactory.getLogger(...)` + les niveaux SLF4J est de la
    **réinvention**. `WebSync`/`MobileSync` loggent leurs actions via un **`org.slf4j.Logger` natif**.
@@ -273,8 +288,9 @@ Frontière entre le **contrat public** (consommé par les ~17 projets) et l'**in
   qui isolent, sans rien imposer au classpath des consommateurs.
 - **Extension** : les consommateurs **utilisent** surtout ; l'extension est rare et encadrée. Donc les
   classes `Abstract*` et les moteurs **ne sont PAS du SPI public** → `internal`.
-- **Implémentations** : **cachées derrière une factory** (à créer à l'étape 6). Le consommateur dépend
-  des **interfaces** (`api`), jamais des impls concrètes (`internal`).
+- **Implémentations** : **cachées derrière une factory** quand un point d'entrée public est nécessaire
+  (`DataFiles` existe déjà pour `data` ; `secret`/`reporting` restent à confirmer à l'étape 6). Le
+  consommateur dépend des **interfaces** (`api`), jamais des impls concrètes (`internal`).
 - **Nommage** : `api` + `internal` uniquement (pas de package `spi`, puisque l'extension n'est pas un
   cas d'usage de premier plan).
 
@@ -286,7 +302,7 @@ Frontière entre le **contrat public** (consommé par les ~17 projets) et l'**in
 | `DataFileManager` | `api.data` | interface = contrat |
 | `SecretManager` | `api.secret` | interface = contrat |
 | `ReportingManager` | `api.reporting` | interface = contrat |
-| `Secret` | `api.secret` | type « valeur sensible » auto-masquée, manipulé par le consommateur |
+| `Secret` | `api.secret` | type « valeur sensible » manipulé par le consommateur ; signatures de masquage posées, corps à fournir en étape 7/8 |
 | `QaToolkitException` + `SyncException` / `DataFileException` / `SecretException` / `ReportingException` | `api.exception` | hiérarchie d'erreurs **publique** (contrat), unchecked — cf. D18 ; dans le périmètre japicmp (étape 10) |
 | `AbstractSyncManager` | `internal.sync` | moteur, extension non prévue |
 | `AbstractDataFileManager` | `internal.data` | code commun interne |
@@ -298,15 +314,16 @@ Frontière entre le **contrat public** (consommé par les ~17 projets) et l'**in
 
 ### Conséquences
 
-- **Factories publiques** (`api`) à créer à l'étape 6 comme **seul** point d'accès aux impls
-  (`data`, `secret`, `reporting`).
+- **Factories publiques** (`api`) : `DataFiles` existe pour `data` ; les points d'accès `secret` et
+  `reporting` restent à confirmer/créer à l'étape 6 comme seuls accès aux impls `internal` si ces
+  domaines doivent être instanciés par le consommateur.
 - Pour `failure` : **ni factory ni type public**. Activation **native** (ServiceLoader), invisible
   du consommateur — cf. **D16**.
 - `WebSync`/`MobileSync` (`api`) étendent `AbstractSyncManager` (`internal`) : dépendance
   `api → internal` **interne au socle**, invisible du consommateur (il ne voit que `WebSync`).
 - Le périmètre `api` = exactement ce que japicmp surveillera (étape 10).
 
-## D16 — Capture d'échec : activation native + délégation Logback/Surefire (roadmap étape 6)
+## D16 — Capture d'échec : activation native + artefacts écrits par le socle (roadmap étape 6)
 
 Comment `TestFailureManager` (package `internal.failure`) est **déclenché**, **qui porte quelle
 part de la mécanique**, et **comment le consommateur le règle**. À implémenter à l'étape 6.
@@ -330,13 +347,15 @@ On s'appuie au maximum sur ce qui existe **nativement** dans la stack ; `TestFai
 
 | Responsabilité | Porté par | Pourquoi |
 |---|---|---|
-| Écriture fichier, format des lignes, rotation, séparation `ERROR_` vs `FAIL_` | **Logback** (`logback.xml` + appenders/markers/filtres) | c'est le rôle natif de Logback via SLF4J ; ne pas réimplémenter un moteur de log |
 | Exécution, répertoire de travail, propriétés système, parallélisme | **Maven Surefire** | c'est lui qui lance les tests et fixe l'environnement |
 | Détection de l'échec + collecte des steps + déclenchement du dump HTML + nommage du dossier `KO__` | **`TestFailureManager`** (mince) | logique spécifique au socle, non couverte nativement |
+| Écriture des 3 fichiers `ERROR_` / `FAIL_` / HTML, format et séparation des contenus | **`TestFailureManager` en Java** | contrat de sortie identique sur les 17 projets, indépendant d'un `logback.xml` local |
 | Historique des steps + erreur (source du `FAIL_*.log`/`ERROR_*.log`) | **Serenity** (`TestOutcome`/`TestStep`) | déjà fourni nativement — lu par `TestFailureManager`, pas de buffer maison (cf. D14 corrigé) |
+| Log live pendant le run | **Logback** | rôle natif du logging ; le default socle est porté par `LogbackConfigurator` / D16-bis |
 
-> Principe : tout ce qui est **configurable nativement** (Logback, Surefire) n'est PAS recodé dans la
-> classe. La classe se limite à ce qu'aucun outil ne sait faire à notre place.
+> Principe : tout ce qui est **déjà fourni nativement** (cycle de test Serenity, lancement Surefire,
+> log live Logback) est réutilisé. Le socle code uniquement le contrat spécifique : dossier `KO__`,
+> trois fichiers, format stable, masquage et dump HTML.
 
 ### Paramétrage par le consommateur (clés + valeurs par défaut)
 
@@ -367,7 +386,7 @@ dépendent. Donc :
 
 ## D6-bis — Versioning : fin de `RELEASE`, Maven Wrapper + Enforcer
 
-**Amende D6** : remplace le mot-clé `RELEASE` par une **version épinglée explicite, bumée par outil**.
+**Amende D6** : remplace le mot-clé `RELEASE` par une **version épinglée explicite, bumpée par outil**.
 
 ### Rationale
 
@@ -408,7 +427,7 @@ ou automatisé via **Renovate/Dependabot** (ouvre PR, CI teste, merge). Bénéfi
 - **Contrôlé** : montée par repo à ton rythme, pas globale imposée ;
 - **M4-safe** : quand l'org bascule, zéro pb (on utilise une version explicite, jamais de métaversion).
 
-### Escape mechanism (D6)
+### Escape mechanism (hérité de D6)
 
 Si un projet doit rester sur une ancienne version du socle : simple non-merge de la PR de bump ou
 `git revert` si déjà merged. C'est mille fois plus clair et traçable que d'inventer un override.
@@ -435,9 +454,9 @@ de compilation.
 | Responsabilité | Porté par | Avant (D16) | **Après (D16-bis, corrigé étape 6)** |
 |---|---|---|---|
 | Historique des steps + erreur (source FAIL_/ERROR_) | `QaLogger` (buffer ThreadLocal) | `QaLogger` | **Serenity** — `TestOutcome.getTestSteps()` + `TestStep.getException()`, lus par `TestFailureManager` (plus de buffer maison) |
-| Masquage secrets avant écriture | `QaLogger` (amont) | — | **Type `Secret`** (auto-masqué à la source) **+ `TestFailureManager`** (à la sérialisation des `TestStep`) — plus de `QaLogger` |
-| Écriture des 3 fichiers (`ERROR_`, `FAIL_`, HTML) | Logback appenders | **TestFailureManager en Java** (depuis le `TestOutcome` Serenity, masqué) |
-| Format / séparation ERROR_/FAIL_ | Logback config | **TestFailureManager** (codé en Java, identique partout) |
+| Masquage secrets avant écriture | `QaLogger` (amont) | — | **Type `Secret`** (signatures posées, impl étape 7) **+ `TestFailureManager`** (à la sérialisation des `TestStep`) — plus de `QaLogger` |
+| Écriture des 3 fichiers (`ERROR_`, `FAIL_`, HTML) | Logback appenders | Logback appenders | **TestFailureManager en Java** (depuis le `TestOutcome` Serenity, avec masquage à la sérialisation) |
+| Format / séparation ERROR_/FAIL_ | Logback config | Logback config | **TestFailureManager** (codé en Java, identique partout) |
 | Log live (console/fichier pendant le run) | **Logback (config du consommateur)** | Logback | **Logback** — *default fourni par le socle* (`Configurator` ServiceLoader, cf. ci-dessous), **surchargeable** par un `logback.xml` local |
 | Exécution / répertoire / parallélisme | Surefire | Surefire | **Surefire** (inchangé) |
 
@@ -447,9 +466,9 @@ de compilation.
   pas par logback.xml qui peut diverger).
 - **Zéro dépendance à la config du consommateur** : qu'il ait un logback.xml ou pas, ça n'impacte
   pas les artefacts contractuels.
-- **Masquage garanti** : les artefacts sont bâtis par `TestFailureManager` en **appliquant le masquage
-  à la sérialisation** des `TestStep` Serenity (jamais depuis la sortie SLF4J brute d'un appender
-  Logback qui verrait la sortie non masquée).
+- **Masquage garanti à l'implémentation** : les artefacts seront bâtis par `TestFailureManager` en
+  **appliquant le masquage à la sérialisation** des `TestStep` Serenity (jamais depuis la sortie SLF4J
+  brute d'un appender Logback qui verrait la sortie non masquée).
 - **Contrat de sortie stable** (cf. D16 « contrat versionné ») : le format `KO__{ENV}__{Test}__{ts}/`
   + les 3 fichiers ne peuvent changer que si le socle le décide (breaking change), jamais par une
   divergence de config.
@@ -611,9 +630,9 @@ du fichier** (peu importe lequel le consommateur utilise).
 
 ### Imposition des règles — option α (Surefire + Parent POM, 1 seul jar)
 
-- Règle **ArchUnit** (« pas de champ `static` non-`final` ») **intégrée au jar `qa-socle`** (ArchUnit en
+- Règle **ArchUnit** (« pas de champ `static` non-`final` ») à **intégrer au jar `qa-socle`** (ArchUnit en
   scope `compile`, **cohérent avec JUnit déjà en `compile`** → **un seul artefact**, pas de 2ᵉ jar).
-- Appliquée aux tests du socle **et imposée aux 17 consommateurs** via le **Parent POM** (`<build>
+- À appliquer aux tests du socle **et à imposer aux 17 consommateurs** via le **Parent POM** (`<build>
   <plugins>` actif, hérité) : Surefire **`dependenciesToScan`** sur `qa-socle` + system property
   **`qa.archunit.basePackage=${project.groupId}`**.
 - ⚠️ Le `dependenciesToScan` est **obligatoire** : Surefire ne scanne que le module courant, la **seule

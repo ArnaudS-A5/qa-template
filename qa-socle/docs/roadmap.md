@@ -20,15 +20,15 @@ SANS implémentation** (coquilles typées).
 | # | Étape | Dépend de | Statut |
 | --- | --- | --- | --- |
 | 1 | Décider la convention de visibilité (public vs interne) | — | ✅ Fait (D15) |
-| 2 | Politique de versioning & compatibilité (D6 + D6-bis) | 1 | 🟡 En cours (D6/D6-bis actés, Wrapper + Enforcer en place) |
+| 2 | Politique de versioning & compatibilité (D6 historique remplacée par D6-bis) | 1 | 🟡 En cours (D6-bis actée, Wrapper + Enforcer en place) |
 | 3 | Stratégie transverse d'erreurs | — (avant 6) | ✅ Fait (D18) |
 | 4 | Configuration & portée/thread-safety des composants | — (avant 6) | ✅ Fait (D19) |
 | 5 | Stratégie de test du socle | — (avant 8) | ✅ Fait (D20) |
-| 6 | Signatures d'API par composant (coquilles typées) + gel de l'API | 1→5 | 🟡 En cours (signatures `sync` posées) |
-| 7 | Cas sécurité : masquage des secrets | 6 | ⬜ À faire |
+| 6 | Signatures d'API par composant (coquilles typées) + gel de l'API | 1→5 | 🟡 En cours (sync/data/secret/log partiels ; reporting/failure + gel restent) |
+| 7 | Cas sécurité : masquage des secrets | 6 | 🟡 En cours (politique/signatures cadrées ; impl/tests non faits) |
 | 8 | Implémentation, composant par composant (+ tests) | 5→7 | ⬜ À faire |
 | 9 | Validation pilote sur SNAPSHOT/RC + ajustements | 8 | ⬜ À faire |
-| 10 | Garde-fou compat (japicmp/revapi) + RELEASE 1.0.0 + doc + généralisation | 9 | ⬜ À faire |
+| 10 | Garde-fou compat (japicmp/revapi) + version 1.0.0 + doc + généralisation | 9 | ⬜ À faire |
 
 > **Pourquoi cette séquence** (points d'ordonnancement non triviaux) :
 > - le **garde-fou de compatibilité** (japicmp/revapi, étape 10) est **après la 1ʳᵉ release** : il
@@ -67,10 +67,10 @@ méthode. La placer ici évite un déplacement coûteux de toutes les classes un
 épinglée explicite** — abandon de `RELEASE`, supprimé en Maven 4 — + SemVer + garde-fous + mécanisme
 d'échappement). Découle de l'étape 1 (on ne versionne que ce qui est public).
 
-**Statut : 🟡 En cours** — *cœur acté en [D6](decisions.md)/[D6-bis](decisions.md) ; Wrapper +
+**Statut : 🟡 En cours** — *cœur acté en [D6-bis](decisions.md) ; D6 est historique/remplacée ; Wrapper +
 Enforcer en place ; ne reste que ci-dessous*
 
-- [x] SemVer + Parent POM + **version épinglée** (abandon `RELEASE`) + mécanisme d'échappement → **acté en D6/D6-bis**.
+- [x] SemVer + Parent POM + **version épinglée** (abandon du mot-clé Maven `RELEASE`) + mécanisme d'échappement → **acté en D6-bis**.
 - [x] Maven Wrapper 3.9.9 + `maven-enforcer-plugin` (`requireMavenVersion`, `requireJavaVersion`,
       `banDynamicVersions`, `bannedDependencies`) → **en place (D6-bis)**.
 - [ ] Règle de dépréciation : `@Deprecated` + maintien sur **N** versions (fixer N).
@@ -109,9 +109,10 @@ des constructeurs, donc les signatures. (« Cycle de vie » ≠ publication, cf.
       socle **agnostique du fichier** ; aucune couche maison.
 - [x] Portée par composant (WebSync par instance/driver du thread ; data par usage ; secret/reporting
       singleton stateless ; log d'action sans état — SLF4J natif ; TestFailureManager sans état + dossier unique).
-- [x] Thread-safety : règles (aucun `static` mutable partagé, état par test délégué à Serenity — pas de
-      buffer maison, immuabilité, confinement driver) + **imposition option α** (ArchUnit dans
-      `qa-socle`, Surefire `dependenciesToScan` piloté par le Parent POM).
+- [x] Thread-safety : règles actées (aucun `static` mutable partagé, état par test délégué à Serenity —
+      pas de buffer maison, immuabilité, confinement driver) + choix de l'**option α** acté
+      (ArchUnit dans `qa-socle`, Surefire `dependenciesToScan` piloté par le Parent POM). Mise en place
+      technique prévue en étape 8.
 
 ---
 
@@ -125,11 +126,12 @@ non-régression exigée par D6 (étape 2).
 
 - [x] **Projet consommateur dédié** comme test principal : exerce le socle contre un **site bidon**
       (vrai navigateur pour `WebSync` : absences d'éléments, locators changés, timeouts).
-- [x] `CyberArkApiClient` / `AlmApiClient` : **WireMock** (pas de serveur réel).
-- [x] `ExcelFileReaderWriter` / `CsvFileReaderWriter` : **fixtures** de fichiers (Excel chiffré inclus).
-- [x] `TestFailureManager` (depuis le `TestOutcome` Serenity) : production des artefacts + **masquage**
-      (type `Secret`) vérifiés.
-- [x] **CI de non-régression** = tests unitaires socle + projet consommateur dédié, contre chaque
+- [x] Stratégie retenue pour `CyberArkApiClient` / `AlmApiClient` : **WireMock** (pas de serveur réel).
+- [x] Stratégie retenue pour `ExcelFileReaderWriter` / `CsvFileReaderWriter` : **fixtures** de fichiers
+      (Excel chiffré inclus).
+- [x] Stratégie retenue pour `TestFailureManager` (depuis le `TestOutcome` Serenity) : production des
+      artefacts + **masquage** (type `Secret`) vérifiés.
+- [x] Stratégie retenue pour la **CI de non-régression** = tests unitaires socle + projet consommateur dédié, contre chaque
       version avant publication (réf. étape 2) — pas de socle isolé.
 
 ---
@@ -139,21 +141,24 @@ non-régression exigée par D6 (étape 2).
 **Objectif** : passer des classes vides aux vrais contrats. Méthodes, paramètres, types de retour,
 exceptions — **sans corps**. Le vrai moment de conception. S'appuie sur 1→5.
 
-**Statut : 🟡 En cours** — *signatures `sync` posées (coquilles typées) ; reste data / log / failure /
-secret / reporting + factories + gel.*
+**Statut : 🟡 En cours** — *coquilles typées en place pour `sync`, `data`, `secret`, `log` ; restent
+`failure`, signatures métier `reporting`, factories `secret`/`reporting` si retenues, resources
+ServiceLoader/Logback et gel.*
 
-- [ ] **Factories publiques** (`api`) pour `data` / `secret` / `reporting` — seul point d'accès aux
-      impls `internal` (cf. D15).
+- [x] **Factory publique `data`** : `DataFiles` existe comme coquille (`api.data`) et porte le point
+      d'accès prévu vers `ExcelFileReaderWriter` / `CsvFileReaderWriter`.
+- [ ] **Factories publiques `secret` / `reporting`** — à confirmer/créer si elles sont nécessaires pour
+      masquer les impls `internal` (cf. D15).
 - [x] `WebSync` (+ `AbstractSyncManager` / `MobileSync`) — signatures de synchro/interaction.
-- [ ] `DataFileManager` (+ `ExcelFileReaderWriter` / `CsvFileReaderWriter`) — lecture/écriture data.
+- [x] `DataFileManager` (+ `AbstractDataFileManager` / `ExcelFileReaderWriter` / `CsvFileReaderWriter`) —
+      signatures lecture/écriture data posées, corps volontairement en coquille.
 - [x] ~~`QaLogger`~~ — **classe supprimée** (étape 6) : aucune valeur ajoutée vs SLF4J natif. Le log
       d'action de synchro est émis par `WebSync`/`MobileSync` via un `org.slf4j.Logger` natif sous le
       **namespace stable `"qa"`** (cf. D17/D14 corrigé). Masquage assuré par le type `Secret`.
-- [ ] **Log live (default socle)** — coquille de **`LogbackConfigurator`** (`internal.log`) +
-      `logback-socle.xml` (resource du jar, cible le namespace stable `"qa"` — pas le package, cf. D17)
-      + déclaration `META-INF/services/ch.qos.logback.classic.spi.Configurator` (cf. **D16-bis**).
-      Mécanisme auto-activé, **aucun type public**, surchargeable par un `logback.xml` local. Porte le
-      namespace `"qa"` + la clé `qa.logger.level` (défaut `WARN`).
+- [x] **Log live (default socle)** — coquille de **`LogbackConfigurator`** (`internal.log`) existante,
+      avec namespace `"qa"` + clé `qa.logger.level`.
+- [ ] **Resources Logback** — `logback-socle.xml` + déclaration
+      `META-INF/services/ch.qos.logback.classic.spi.Configurator` restent à créer (cf. **D16-bis**).
 - [ ] `TestFailureManager` — capture d'échec (cf. **D16** + **D16-bis**) :
   - [ ] activation **native** via ServiceLoader (`StepListener` Serenity) — **aucun type public,
         aucune annotation** ;
@@ -164,10 +169,11 @@ secret / reporting + factories + gel.*
   - [ ] définir les **clés de config** (`serenity.conf` / system properties) avec **valeurs par
         défaut** : `enabled` (opt-out), `outputDir`, `dumpHtml`, `env`... (noms à figer ici) ;
   - [ ] graver le **contrat de sortie** (`KO__...` + 3 fichiers, cf. D8) comme contrat versionné.
-- [ ] `SecretManager` (+ `CyberArkApiClient`) — récupération de secrets **+ contrat « valeur
-      sensible »** (déclaration d'un secret à masquer) : **seule signature publique du masquage**,
-      figée ici, **avant le gel** (la politique/intégration vient en étape 7, sans nouvelle signature).
-- [ ] `ReportingManager` (+ `AlmApiClient`) — remontée résultats ALM.
+- [x] `SecretManager` (+ `CyberArkApiClient`) — signatures de récupération de secrets posées.
+- [x] `Secret` — contrat public de **valeur sensible** posé (`of`, `value`, `masked`,
+      `sha256Prefix`, `toString`) ; implémentation du masquage en étape 7/8.
+- [ ] `ReportingManager` (+ `AlmApiClient`) — types créés, mais signatures métier de remontée ALM
+      encore à définir.
 - [ ] **Fixer la date de gel de l'API** une fois toutes les signatures arrêtées — **y compris la
       signature de masquage de `SecretManager`** (réf. étapes 2 et 7).
 
@@ -180,10 +186,11 @@ son **intégration interne** et ses **tests**. Isolé car risque OWASP. ⚠️ *
 publique ici** : la seule signature concernée (contrat « valeur sensible » de `SecretManager`) est
 figée en **étape 6, avant le gel**.
 
-**Statut : ⬜ À faire**
+**Statut : 🟡 En cours** — la politique et les signatures publiques sont cadrées ; l'implémentation et
+les tests ne sont pas faits.
 
-- [ ] Définir la **règle de masquage** : quoi masquer, comment (motif/longueur révélée), à quel moment
-      (en amont de toute écriture).
+- [x] Définir la **règle de masquage** : quoi masquer, comment (préfixe visible + hash court), à quel
+      moment (en amont de toute écriture) — cadré par `Secret` / D12 / D16-bis.
 - [ ] Implémenter le **masquage à la source** dans le type `Secret` (`masked()` / `sha256Prefix()` /
       `toString()`) — **sans changer sa signature publique** (figée en 6).
 - [ ] Intégrer le masquage dans `TestFailureManager` (`internal`, dumps/logs d'échec).
@@ -225,7 +232,7 @@ brûler de numéro de version.
 
 ---
 
-## Étape 10 — Garde-fou compat + RELEASE 1.0.0 + doc + généralisation
+## Étape 10 — Garde-fou compat + version 1.0.0 + doc + généralisation
 
 **Objectif** : verrouiller la compatibilité, publier la **première release figée**, documenter pour
 les consommateurs, puis généraliser. Le garde-fou de compatibilité n'a de sens qu'**à partir** d'une
@@ -235,7 +242,7 @@ baseline publiée — d'où sa place ici (et non avant la 1ʳᵉ release).
 
 - [ ] Brancher **japicmp/revapi** (périmètre = API publique de l'étape 1) et faire **échouer le build**
       sur breaking change non intentionnel ; baseline = la release publiée ci-dessous.
-- [ ] Publier la **RELEASE 1.0.0** sur Artifactory.
+- [ ] Publier la **version 1.0.0** sur Artifactory.
 - [ ] Fournir la **doc consommateur** : guide de démarrage + Javadoc de l'API publique (au-delà de
       `decisions.md`).
 - [ ] **Généraliser** aux autres consommateurs (encore en 1.x, retour terrain absorbé en mineur/patch).

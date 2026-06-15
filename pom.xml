@@ -8,7 +8,7 @@
       ============================================================================
       qa-parent — Parent POM du socle QA (racine du dépôt, layout Maven standard)
       ============================================================================
-      Rôle (décision D6) :
+      Rôle (décision D6-bis ; D6 historique remplacée) :
         - Centralise TOUTES les versions (dépendances + plugins) en un seul endroit.
         - Les ~17 projets consommateurs héritent de ce parent : ils ne gèrent
           AUCUNE version eux-mêmes (ni dépendance, ni plugin).
@@ -20,8 +20,9 @@
       Conséquence pour le consommateur :
         - Il déclare `<parent>qa-parent</parent>` puis ajoute la dépendance `qa-socle`
           SANS version (héritée via dependencyManagement).
-        - Une montée de version du socle = republier qa-parent/qa-socle, sans
-          toucher aux projets consommateurs.
+        - Une montée de version du socle = publier qa-parent/qa-socle puis bumper
+          la version explicite du parent dans chaque projet consommateur, idéalement
+          par outil (Renovate/Dependabot ou commande versions:update-parent).
       ============================================================================
     -->
 
@@ -76,7 +77,7 @@
     <!--
       dependencyManagement : déclare les versions UNE SEULE FOIS.
       Les modules (et consommateurs héritant du parent) référencent ces dépendances
-      SANS version. C'est le cœur du "zéro modification" côté consommateur.
+      SANS version. C'est le cœur du pilotage centralisé des versions côté socle.
     -->
     <dependencyManagement>
         <dependencies>

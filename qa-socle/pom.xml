@@ -9,7 +9,7 @@
       qa-socle — Librairie socle QA (consommée comme dépendance Maven)
       ============================================================================
       Hérite de qa-parent : AUCUNE version n'est déclarée ici, tout est piloté
-      par le dependencyManagement du parent (décision D6).
+      par le dependencyManagement du parent (décision D6-bis).
 
       Transmission aux consommateurs (transitivité maîtrisée) :
         - scope `compile` (par défaut) → la dépendance est RÉEXPORTÉE au projet

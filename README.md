@@ -4,8 +4,8 @@ Socle d'outils QA custom pour la stack **Selenium Java / Serenity BDD / JUnit 5 
 consommé **comme dépendance Maven** par les ~17 projets de tests de l'équipe
 (Git/Bitbucket, Artifactory JFrog, CI Jenkins gérée par une autre équipe).
 
-> **Statut : squelette en construction.** Les classes sont des coquilles vides (par choix) ;
-> la séquence de construction est pilotée par la [feuille de route](qa-socle/docs/roadmap.md).
+> **Statut : squelette en construction.** Les signatures sont en cours de stabilisation ; les corps
+> restent volontairement vides ou neutres avant l'étape d'implémentation.
 
 ## Sommaire
 
@@ -24,7 +24,7 @@ consommé **comme dépendance Maven** par les ~17 projets de tests de l'équipe
 pom.xml         # Parent POM (qa-parent) : centralise versions (dépendances + plugins), agrégateur
 qa-socle/       # La librairie socle (jar) : WebSync, DataFileManager, TestFailureManager...
   └── docs/     # Décisions d'architecture, feuille de route, gouvernance Git
-.github/        # Config Copilot (agents + skills) — annexe, à externaliser (voir plus bas)
+.github/        # CI suivie ponctuellement ; configs assistants locales ignorées/externalisées
 ```
 
 ## Build
@@ -68,18 +68,25 @@ personnaliser **au clone**, avant tout gel d'API ou release. Trois gestes, une f
 Frontière **`api`** (contrat public consommé par les 17 projets) vs **`internal`** (impls + moteurs,
 non contractuels), cf. décision [D15](qa-socle/docs/decisions.md).
 
+Le rôle central de `WebSync` / `MobileSync` n'est pas de réécrire Selenium ou Serenity. Le socle expose
+des opérations familières de `WebElement` / `WebElementFacade`, mais chaque méthode doit intégrer la
+synchro maison : ré-résolution du `By`, polling, absorption des exceptions transitoires de DOM
+(`NoSuchElement`, `StaleElement`, `ElementNotInteractable`, `ElementClickIntercepted`...), puis
+délégation à l'opération native Selenium/Serenity quand l'élément est réellement exploitable.
+
 | Domaine | `api` (public) | `internal` (caché) | Rôle |
 |---|---|---|---|
 | `sync` | `WebSync`, `MobileSync` | `AbstractSyncManager` | synchronisation robuste (fluentWait + flag JS) |
 | `data` | `DataFileManager` | `AbstractDataFileManager`, `ExcelFileReaderWriter`, `CsvFileReaderWriter` | données de test Excel/CSV (lecture + écriture) |
-| `log` | *(aucun type public — log d'action via SLF4J natif)* | `LogbackConfigurator` *(à venir, étape 6 — D16-bis)* | default Logback (namespace `"qa"`, clé `qa.logger.level`) imposé par la présence du jar, surchargeable ; **pas de façade maison** |
+| `log` | *(aucun type public — log d'action via SLF4J natif)* | `LogbackConfigurator` *(coquille existante ; resources à venir — D16-bis)* | default Logback (namespace `"qa"`, clé `qa.logger.level`) imposé par la présence du jar, surchargeable ; **pas de façade maison** |
 | `failure` | *(hook à venir, étape 6)* | `TestFailureManager` | artefacts d'échec (logs + dump HTML) |
-| `secret` | `SecretManager`, `Secret` | `CyberArkApiClient` | récupération de secrets au runtime + valeur sensible auto-masquée (D12) |
+| `secret` | `SecretManager`, `Secret` | `CyberArkApiClient` | récupération de secrets au runtime + valeur sensible avec masquage à implémenter (D12) |
 | `reporting` | `ReportingManager` | `AlmApiClient` | remontée des résultats vers ALM (D13) |
 | `exception` | `QaToolkitException` + `SyncException` / `DataFileException` / `SecretException` / `ReportingException` | — | hiérarchie d'erreurs **unchecked** (D18) ; traduit les exceptions tierces en conservant la `cause` |
 
-Les impls `internal` seront obtenues via des **factories publiques** (créées à l'étape 6 de la roadmap),
-jamais par `new` direct côté consommateur.
+Les impls `internal` sont exposées uniquement via des points d'entrée publics quand c'est nécessaire :
+`DataFiles` existe déjà pour `data`; les points d'accès `secret` et `reporting` restent à confirmer
+avant gel de l'API.
 
 Sources : [qa-socle/src/main/java/com/example/qa/](qa-socle/src/main/java/com/example/qa/).
 Le contenu réel (signatures puis implémentations) sera intégré selon la
@@ -110,11 +117,6 @@ KO__{ENV}__{NomDuTest}__{yyyy-MM-dd_HH-mm-ss}/
 
 ## Assistance Copilot (annexe)
 
-`.github/` contient la configuration **GitHub Copilot** (5 agents, 13 skills) qui assiste l'équipe
-sur ce socle et les projets de tests. Elle est **indépendante du socle** : elle a vocation à être
-**externalisée dans son propre dépôt** et importée séparément. Elle vit ici temporairement, le temps
-de la construction.
-
-| Agents | Skills |
-|---|---|
-| [`qa-test-author`](.github/agents/qa-test-author.agent.md) · [`qa-maintenance`](.github/agents/qa-maintenance.agent.md) · [`socle-framework-builder`](.github/agents/socle-framework-builder.agent.md) · [`cicd-build-engineer`](.github/agents/cicd-build-engineer.agent.md) · [`qa-tech-lead-refonte`](.github/agents/qa-tech-lead-refonte.agent.md) | conventions POM, locators/WebSync, Maven local, Artifactory, Git flow, triage Serenity, data Excel/CSV, diagnostic flaky, auto-fix locator, classification d'échecs, suivi de campagne, config VS Code, intégration socle — détail sous [.github/skills/](.github/skills/) |
+Les configurations assistants/agents ne font pas partie du livrable `qa-socle` : elles sont ignorées
+par défaut et destinées à être externalisées. Le dépôt ne doit documenter ici que les éléments suivis
+qui participent réellement au build ou à la CI du socle.
