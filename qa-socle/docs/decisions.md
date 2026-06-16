@@ -226,13 +226,60 @@ Le Git flow est documenté en Markdown pour être consommable par l'agent.
 - **Ne pas réinventer les annotations** : réutiliser les métadonnées **Serenity** existantes pour porter
   le mapping cas de test ↔ ALM, en priorité **`@WithTag`** (ex. `@WithTag("alm.testId:1042")`),
   lues par réflexion (`TestAnnotations`). `@Title` complète si besoin.
-- Créer une annotation maison (`@AlmTest`) **uniquement si** `@WithTag` est trop limité (plusieurs champs
-  structurés : testId + domain + folder...). À challenger à l'implémentation.
 - Version ALM cible : **à confirmer** (probablement ~18.4 — l'API varie selon la version, à figer avant impl).
 - **Squelettes créés** : `ReportingManager` (package `api.reporting`) + `AlmApiClient` (package
   `internal.reporting`), cf. D15 — remplacent la classe unique `AlmReportingManager` qui mariait
   l'outil au concept. Le consommateur ne dépend que de `ReportingManager`.
-- **Aucune implémentation pour l'instant** (phase backlog / nommage).
+
+### Mise à jour (étape 6) — API de publication, mapping et authentification
+
+Signatures arrêtées lors de l'écriture des coquilles typées (étape 6).
+
+#### API de publication (deux appels par test)
+
+- `publishStart(String almTestId)` → appelé en **début de test** ; pousse le statut « In Progress » dans ALM.
+- `publish(TestExecutionResult result)` → appelé en **fin de test** (quel que soit le résultat) ; pousse le statut final.
+
+`TestExecutionResult` est un **objet valeur neutre** (package `api.reporting`) : `almTestId` (String) + `status` (ExecutionStatus).
+Conçu extensible : des champs complémentaires (durée, message d'erreur…) seront ajoutés avant le gel sans rompre la signature de `publish`.
+
+`ExecutionStatus` est une **enum maison** (package `api.reporting`) : `IN_PROGRESS`, `PASSED`, `FAILED`.
+
+#### Clé de maintenance
+
+`qa.reporting.enabled` (défaut `true`). Mettre à `false` dans `serenity.conf` pour désactiver sans toucher au code (même principe que `qa.failure.enabled`, D16).
+
+#### Mapping test ↔ ALM (deux modes alternatifs)
+
+La résolution de l'identifiant ALM est **interne à `AlmApiClient`** ; le code de test ne manipule jamais de coordonnées ALM brutes.
+
+- **Mode annotation** (`@WithTag("alm.testId:1042")`) : lu par réflexion (`TestAnnotations` Serenity). Suffisant si l'ID seul identifie le cas de test dans la campagne. À privilégier tant que la structure ALM est simple et stable.
+- **Mode fichier** : fichier de mapping externe (format à figer à l'étape 8) associant le nom qualifié de la classe Java à ses coordonnées ALM. Privilégié quand les coordonnées sont multiples ou fréquemment changeantes (pas de recompilation).
+
+Les deux modes sont **alternatifs** (ni complémentaires, ni en surcharge). Le choix est piloté par la configuration. Un outil de génération du fichier de mapping sera produit si la structure ALM impose ce mode de façon systématique.
+
+> **`@AlmTest` maison non retenue** : le couple annotation/fichier couvre tous les cas identifiés.
+> La décision initiale (« créer `@AlmTest` uniquement si `@WithTag` est trop limité ») est close dans ce sens.
+
+#### Coordonnées ALM (répartition)
+
+Deux profils, selon l'organisation des campagnes ALM :
+
+| Profil | Coordonnées globales (`serenity.conf`) | Par test (annotation ou fichier) |
+|---|---|---|
+| **Défaut** (campagnes par application) | domain, project, test plan, test set | test instance ID uniquement |
+| **Tout fichier** (campagnes par thématique) | — | toutes les coordonnées dans le fichier |
+
+Le profil est sélectionné par configuration (`serenity.conf`). En profil « tout fichier », les clés globales `qa.alm.*` sont ignorées.
+
+#### Authentification ALM
+
+- **Login** : clé `qa.alm.login` dans `serenity.conf`.
+- **Mot de passe** : récupéré via `SecretManager` (CyberArk) — jamais en clair dans la config.
+
+#### Stateless par publication (D19)
+
+Aucune session ALM partagée entre threads : chaque appel `publishStart`/`publish` ouvre et ferme sa propre session. Garantit la sûreté en exécution parallèle Serenity.
 
 ## D14 — Renommages de classes actés (avant gel de l'API)
 
