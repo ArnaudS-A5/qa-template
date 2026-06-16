@@ -172,8 +172,9 @@ ServiceLoader/Logback et gel.*
 - [x] `SecretManager` (+ `CyberArkApiClient`) — signatures de récupération de secrets posées.
 - [x] `Secret` — contrat public de **valeur sensible** posé (`of`, `value`, `masked`,
       `sha256Prefix`, `toString`) ; implémentation du masquage en étape 7/8.
-- [ ] `ReportingManager` (+ `AlmApiClient`) — types créés, mais signatures métier de remontée ALM
-      encore à définir.
+- [x] `ReportingManager` (+ `AlmApiClient`) — signatures de publication arrêtées : `publishStart(String almTestId)`
+      + `publish(TestExecutionResult)` ; `ExecutionStatus` + `TestExecutionResult` créés en `api.reporting`
+      (cf. D13 mis à jour).
 - [ ] **Fixer la date de gel de l'API** une fois toutes les signatures arrêtées — **y compris la
       signature de masquage de `SecretManager`** (réf. étapes 2 et 7).
 
