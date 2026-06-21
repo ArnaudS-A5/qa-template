@@ -238,10 +238,10 @@ Signatures arrêtées lors de l'écriture des coquilles typées (étape 6).
 #### API de publication (deux appels par test)
 
 - `publishStart(String almTestId)` → appelé en **début de test** ; pousse le statut « In Progress » dans ALM.
-- `publish(TestExecutionResult result)` → appelé en **fin de test** (quel que soit le résultat) ; pousse le statut final.
+- `publishEnd(TestExecutionResult result)` → appelé en **fin de test** (quel que soit le résultat) ; pousse le statut final.
 
 `TestExecutionResult` est un **objet valeur neutre** (package `api.reporting`) : `almTestId` (String) + `status` (ExecutionStatus).
-Conçu extensible : des champs complémentaires (durée, message d'erreur…) seront ajoutés avant le gel sans rompre la signature de `publish`.
+Conçu extensible : des champs complémentaires (durée, message d'erreur…) seront ajoutés avant le gel sans rompre la signature de `publishEnd`.
 
 `ExecutionStatus` est une **enum maison** (package `api.reporting`) : `IN_PROGRESS`, `PASSED`, `FAILED`.
 
@@ -279,7 +279,7 @@ Le profil est sélectionné par configuration (`serenity.conf`). En profil « to
 
 #### Stateless par publication (D19)
 
-Aucune session ALM partagée entre threads : chaque appel `publishStart`/`publish` ouvre et ferme sa propre session. Garantit la sûreté en exécution parallèle Serenity.
+Aucune session ALM partagée entre threads : chaque appel `publishStart`/`publishEnd` ouvre et ferme sa propre session. Garantit la sûreté en exécution parallèle Serenity.
 
 ## D14 — Renommages de classes actés (avant gel de l'API)
 

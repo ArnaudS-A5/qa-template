@@ -10,7 +10,7 @@ package com.example.qa.api.reporting;
  * <p><b>Cycle de publication par test (deux appels) :</b>
  * <ol>
  *   <li>{@link #publishStart(String)} — en début d'exécution → statut « In Progress » dans ALM ;</li>
- *   <li>{@link #publish(TestExecutionResult)} — en fin d'exécution → statut final (Passed/Failed).</li>
+ *   <li>{@link #publishEnd(TestExecutionResult)} — en fin d'exécution → statut final (Passed/Failed).</li>
  * </ol>
  *
  * <p><b>Stateless par publication</b> (D19) : aucune session inter-threads — chaque appel est
@@ -43,5 +43,5 @@ public interface ReportingManager {
      * @param result résultat d'exécution (identifiant ALM + statut final)
      * @throws com.example.qa.api.exception.ReportingException si l'appel ALM échoue
      */
-    void publish(TestExecutionResult result);
+    void publishEnd(TestExecutionResult result);
 }

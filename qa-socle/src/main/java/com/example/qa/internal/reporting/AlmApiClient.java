@@ -39,7 +39,7 @@ public class AlmApiClient implements ReportingManager {
     }
 
     @Override
-    public void publish(TestExecutionResult result) {
+    public void publishEnd(TestExecutionResult result) {
         // Coquille typée (étape 6) : appel REST du statut final à implémenter en étape 8.
     }
 }

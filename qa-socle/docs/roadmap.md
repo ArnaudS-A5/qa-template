@@ -24,7 +24,7 @@ SANS implémentation** (coquilles typées).
 | 3 | Stratégie transverse d'erreurs | — (avant 6) | ✅ Fait (D18) |
 | 4 | Configuration & portée/thread-safety des composants | — (avant 6) | ✅ Fait (D19) |
 | 5 | Stratégie de test du socle | — (avant 8) | ✅ Fait (D20) |
-| 6 | Signatures d'API par composant (coquilles typées) + gel de l'API | 1→5 | 🟡 En cours (sync/data/secret/log partiels ; reporting/failure + gel restent) |
+| 6 | Signatures d'API par composant (coquilles typées) + gel de l'API | 1→5 | 🟡 En cours (sync/data/secret/reporting/log signés ; failure, factories, arbitrages API/Logback + gel restent) |
 | 7 | Cas sécurité : masquage des secrets | 6 | 🟡 En cours (politique/signatures cadrées ; impl/tests non faits) |
 | 8 | Implémentation, composant par composant (+ tests) | 5→7 | ⬜ À faire |
 | 9 | Validation pilote sur SNAPSHOT/RC + ajustements | 8 | ⬜ À faire |
@@ -141,9 +141,9 @@ non-régression exigée par D6 (étape 2).
 **Objectif** : passer des classes vides aux vrais contrats. Méthodes, paramètres, types de retour,
 exceptions — **sans corps**. Le vrai moment de conception. S'appuie sur 1→5.
 
-**Statut : 🟡 En cours** — *coquilles typées en place pour `sync`, `data`, `secret`, `log` ; restent
-`failure`, signatures métier `reporting`, factories `secret`/`reporting` si retenues, resources
-ServiceLoader/Logback et gel.*
+**Statut : 🟡 En cours** — *coquilles typées en place pour `sync`, `data`, `secret`, `reporting` et
+`log` ; restent `failure`, les factories `secret`/`reporting` si retenues, l'arbitrage de frontière
+API autour d'`AbstractSyncManager`, l'arbitrage technique Logback `compile`/`runtime`, puis le gel.*
 
 - [x] **Factory publique `data`** : `DataFiles` existe comme coquille (`api.data`) et porte le point
       d'accès prévu vers `ExcelFileReaderWriter` / `CsvFileReaderWriter`.
@@ -157,8 +157,11 @@ ServiceLoader/Logback et gel.*
       **namespace stable `"qa"`** (cf. D17/D14 corrigé). Masquage assuré par le type `Secret`.
 - [x] **Log live (default socle)** — coquille de **`LogbackConfigurator`** (`internal.log`) existante,
       avec namespace `"qa"` + clé `qa.logger.level`.
-- [ ] **Resources Logback** — `logback-socle.xml` + déclaration
-      `META-INF/services/ch.qos.logback.classic.spi.Configurator` restent à créer (cf. **D16-bis**).
+- [ ] **Arbitrage Logback avant implémentation** — `LogbackConfigurator` doit implémenter l'interface
+      Logback `ch.qos.logback.classic.spi.Configurator`, alors que `logback-classic` est aujourd'hui
+      en scope `runtime` : décider comment compiler le configurator sans exposer inutilement Logback
+      aux consommateurs (cf. **D16-bis**). Les resources `logback-socle.xml` +
+      `META-INF/services/ch.qos.logback.classic.spi.Configurator` seront créées à l'étape 8.
 - [ ] `TestFailureManager` — capture d'échec (cf. **D16** + **D16-bis**) :
   - [ ] activation **native** via ServiceLoader (`StepListener` Serenity) — **aucun type public,
         aucune annotation** ;
@@ -173,8 +176,13 @@ ServiceLoader/Logback et gel.*
 - [x] `Secret` — contrat public de **valeur sensible** posé (`of`, `value`, `masked`,
       `sha256Prefix`, `toString`) ; implémentation du masquage en étape 7/8.
 - [x] `ReportingManager` (+ `AlmApiClient`) — signatures de publication arrêtées : `publishStart(String almTestId)`
-      + `publish(TestExecutionResult)` ; `ExecutionStatus` + `TestExecutionResult` créés en `api.reporting`
+      + `publishEnd(TestExecutionResult)` ; `ExecutionStatus` + `TestExecutionResult` créés en `api.reporting`
       (cf. D13 mis à jour).
+- [ ] **Arbitrage frontière API `sync` avant gel** — `WebSync`/`MobileSync` sont publics (`api`) mais
+      héritent toute leur surface commune de `AbstractSyncManager` (`internal`). Décider si ce contrat
+      commun reste dans `internal` avec garde-fou compat élargi, s'il est déplacé en `api`, ou si une
+      autre forme de façade publique est retenue. Objectif : que le périmètre versionné reflète la
+      vraie surface consommable.
 - [ ] **Fixer la date de gel de l'API** une fois toutes les signatures arrêtées — **y compris la
       signature de masquage de `SecretManager`** (réf. étapes 2 et 7).
 
@@ -209,7 +217,8 @@ les tests ne sont pas faits.
 - [ ] `WebSync` (cœur : fluentWait + flag JS) + tests comportementaux.
 - [ ] `DataFileManager` (Excel/CSV) + tests.
 - [ ] `TestFailureManager` (depuis le `TestOutcome` Serenity) + tests.
-- [ ] `LogbackConfigurator` (`internal.log`) + `logback-socle.xml` (default socle) + test :
+- [ ] `LogbackConfigurator` (`internal.log`) + resources `logback-socle.xml` /
+      `META-INF/services/ch.qos.logback.classic.spi.Configurator` (default socle) + test :
       default appliqué sans `logback.xml` local, surcharge locale prioritaire.
 - [ ] **Garde-fou thread-safety (D19/α)** : règle ArchUnit (« pas de `static` non-`final` ») dans
       `qa-socle` + config Surefire `dependenciesToScan` dans le Parent POM (héritée par les consommateurs).

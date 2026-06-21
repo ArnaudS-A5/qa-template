@@ -1,11 +1,11 @@
 package com.example.qa.api.reporting;
 
 /**
- * Résultat neutre d'exécution d'un cas de test, transmis à {@link ReportingManager#publish}.
+ * Résultat neutre d'exécution d'un cas de test, transmis à {@link ReportingManager#publishEnd}.
  *
  * <p>Type valeur immuable. Conçu extensible : des champs complémentaires (durée, message
  * d'erreur…) seront ajoutés avant le gel de l'API sans rompre la signature de
- * {@link ReportingManager#publish}.
+ * {@link ReportingManager#publishEnd}.
  *
  * <p>Squelette — corps réel à fournir (étape 8).
  */
