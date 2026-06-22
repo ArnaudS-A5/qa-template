@@ -162,15 +162,18 @@ API autour d'`AbstractSyncManager`, l'arbitrage technique Logback `compile`/`run
       en scope `runtime` : décider comment compiler le configurator sans exposer inutilement Logback
       aux consommateurs (cf. **D16-bis**). Les resources `logback-socle.xml` +
       `META-INF/services/ch.qos.logback.classic.spi.Configurator` seront créées à l'étape 8.
-- [ ] `TestFailureManager` — capture d'échec (cf. **D16** + **D16-bis**) :
-  - [ ] activation **native** via ServiceLoader (`StepListener` Serenity) — **aucun type public,
-        aucune annotation** ;
+- [ ] `TestFailureManager` — capture d'échec (**classe simple**, D5 ; cf. **D16** + **D16-bis**) :
+  - [x] activation **native** via ServiceLoader **JUnit** : `TestFailureManager` implémente lui-même
+        `TestExecutionListener` (hook + écriture en une classe simple), déclaré dans
+        `META-INF/services/...` — **aucun type public, aucune annotation**. D16 corrigée (Serenity ne
+        découvre pas les `StepListener` par ServiceLoader).
   - [ ] **écrire les 3 fichiers en Java** (`ERROR_`/`FAIL_` + dump HTML) depuis le **`TestOutcome`
         Serenity** (`getTestSteps()` + `TestStep.getException()`), en appliquant le masquage des
         valeurs sensibles — format/nommage identiques sur les 17 projets (cf. **D16-bis**) ; **Logback**
         ne gère que le *log live*, **Surefire** l'exécution/répertoire ;
-  - [ ] définir les **clés de config** (`serenity.conf` / system properties) avec **valeurs par
-        défaut** : `enabled` (opt-out), `outputDir`, `dumpHtml`, `env`... (noms à figer ici) ;
+  - [x] **clés de config figées** (constantes `TestFailureManager`, défauts inclus), unifiées sous
+        `qa.failure.artefacts.*` : `.enabled` (opt-out), `.outputDir`, `.dumpHtml`. Le `{ENV}` du
+        nommage `KO__` est lu de l'environnement Serenity actif (`environment`, D19) — pas de clé dédiée ;
   - [ ] graver le **contrat de sortie** (`KO__...` + 3 fichiers, cf. D8) comme contrat versionné.
 - [x] `SecretManager` (+ `CyberArkApiClient`) — signatures de récupération de secrets posées.
 - [x] `Secret` — contrat public de **valeur sensible** posé (`of`, `value`, `masked`,

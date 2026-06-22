@@ -247,7 +247,7 @@ Conçu extensible : des champs complémentaires (durée, message d'erreur…) se
 
 #### Clé de maintenance
 
-`qa.reporting.enabled` (défaut `true`). Mettre à `false` dans `serenity.conf` pour désactiver sans toucher au code (même principe que `qa.failure.enabled`, D16).
+`qa.reporting.enabled` (défaut `true`). Mettre à `false` dans `serenity.conf` pour désactiver sans toucher au code (même principe que `qa.failure.artefacts.enabled`, D16).
 
 #### Mapping test ↔ ALM (deux modes alternatifs)
 
@@ -377,10 +377,22 @@ part de la mécanique**, et **comment le consommateur le règle**. À implément
 
 ### Activation : native et invisible (option A, sans annotation)
 
-- Le hook s'active par la **seule présence du jar** `qa-socle` au classpath, via **ServiceLoader**
-  (fichier `META-INF/services/...` interne au jar). Candidat naturel : un **`StepListener` Serenity**
-  (il voit **toutes les steps** → matière du `FAIL_*.log`) ; éventuellement complété d'un
-  `TestExecutionListener` JUnit pour le cycle de vie.
+- Le hook s'active par la **seule présence du jar** `qa-socle` au classpath, via le **ServiceLoader de
+  JUnit Platform** : le jar livre un `META-INF/services/org.junit.platform.launcher.TestExecutionListener`
+  déclarant **`TestFailureManager`** (`internal.failure`), qui **implémente lui-même**
+  `TestExecutionListener` (hook + écriture en une seule classe simple). Le `Launcher` JUnit
+  auto-enregistre ce listener — c'est le moteur que **Surefire** lance à chaque `mvn test`/`verify`
+  (local et CI), et c'est exactement ainsi que **serenity-junit5** s'active lui-même.
+  - ⚠️ **Correction (vérifié sur Serenity 4.2.22)** : la version initiale de D16 parlait d'un
+    **ServiceLoader d'un `StepListener` Serenity** — **inexact**. Serenity **ne découvre pas** les
+    `StepListener` par ServiceLoader (un `META-INF/services/...StepListener` serait **ignoré**) ; ils
+    s'enregistrent **programmatiquement** (`StepEventBus.getEventBus().registerListener(...)`). Le seul
+    service auto-découvert par présence du jar dans cette stack est le `TestExecutionListener` JUnit.
+  - À la fin d'un test (`executionFinished`), `TestFailureManager` lit le résultat et, **uniquement en cas d'échec**,
+    récupère le `TestOutcome` Serenity
+    (`StepEventBus.getEventBus().getBaseStepListener().getCurrentTestOutcome()` → steps + exception)
+    puis délègue à `TestFailureManager#captureFailure`. *(L'instant exact de lecture — `executionFinished`
+    JUnit vs `testFinished` Serenity — est à confirmer à l'implémentation, étape 8.)*
 - **Rejet explicite de l'option annotation** (ex. `@ExtendWith(QaFailureExtension.class)`) : une
   annotation **oubliée** dans un projet ne produirait **aucun artefact, sans erreur** → personne ne
   comprendrait l'absence des fichiers de sortie. L'activation automatique supprime ce piège.
@@ -408,17 +420,23 @@ On s'appuie au maximum sur ce qui existe **nativement** dans la stack ; `TestFai
 
 Le hook lit des **clés de configuration** depuis **`serenity.conf`** ou les **system properties**
 (priorité property > conf > défaut). **Toutes ont une valeur par défaut** → si le consommateur ne
-configure rien, ça marche. Exemples indicatifs (noms exacts à figer à l'étape 6) :
+configure rien, ça marche. Noms **figés** (étape 6, cf. constantes `TestFailureManager`) :
 
-| Clé (indicative) | Rôle | Défaut |
+| Clé | Rôle | Défaut |
 |---|---|---|
-| `qa.failure.enabled` | activer / désactiver tout le mécanisme (opt-out global) | `true` |
-| `qa.failure.outputDir` | racine des dossiers de résultats | `target/qa-results` |
-| `qa.failure.dumpHtml` | produire ou non le dump HTML de la step | `true` |
-| `qa.failure.env` | valeur `{ENV}` du nommage (`RECETTE`, `INTEG`...) | déduite / `LOCAL` |
+| `qa.failure.artefacts.enabled` | produire / non les artefacts d'échec (opt-out global) | `true` |
+| `qa.failure.artefacts.outputDir` | racine des dossiers de résultats | `target/qa-results` |
+| `qa.failure.artefacts.dumpHtml` | produire ou non le dump HTML de la step | `true` |
 
-> L'**opt-out** (`enabled=false`) est l'échappatoire pour un projet qui ne veut pas du mécanisme,
-> sans toucher au code — il remplace le « ne pas mettre l'annotation » de l'option B.
+> **Noms figés** dans `TestFailureManager` (constantes `ENABLED_KEY`, `OUTPUT_DIR_KEY`, `DUMP_HTML_KEY`
+> + leurs `*_DEFAULT`), unifiés sous le préfixe **`qa.failure.artefacts.*`** (`failure` = contexte « sur
+> échec », `artefacts` = la production gérée ; leaf `.enabled` parallèle à `qa.reporting.enabled`).
+> **`{ENV}` du nommage `KO__` n'est PAS une clé du socle** : il est lu de l'**environnement Serenity
+> actif** (propriété `environment`, D19) — source unique, pas de double définition (sinon divergence si
+> modifié à deux endroits).
+
+> L'**opt-out** (`qa.failure.artefacts.enabled=false`) est l'échappatoire pour un projet qui ne veut pas
+> du mécanisme, sans toucher au code — il remplace le « ne pas mettre l'annotation » de l'option B.
 
 ### Contrat de SORTIE = second contrat versionné (⚠️)
 

@@ -1,0 +1,3 @@
+# Hook d'activation native de la capture d'échec (cf. D16).
+# Auto-enregistré par le Launcher JUnit Platform (Surefire) à la seule présence du jar qa-socle.
+com.example.qa.internal.failure.TestFailureManager
