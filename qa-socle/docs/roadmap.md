@@ -228,6 +228,12 @@ les tests ne sont pas faits.
 - [ ] `CyberArkApiClient` + tests.
 - [ ] `AlmApiClient` + tests.
 
+> **Mobile différé (hors périmètre étape 8)** — `MobileSync` n'est **pas** implémenté ici : on ne se
+> fait pas ralentir par un pilote mobile inexistant. Ses **signatures sont déjà gelées** (étape 6) et sa
+> surface publique s'appuie largement sur celle de `WebSync` (moteur commun `AbstractSyncManager`) ;
+> seule l'implémentation des **gestes spécifiques mobile** reste à faire, **reportée** au démarrage d'un
+> pilote mobile (étape ultérieure). `WebSync` ci-dessus = **web uniquement**.
+
 ---
 
 ## Étape 9 — Validation pilote sur SNAPSHOT/RC + ajustements

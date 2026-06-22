@@ -24,8 +24,8 @@ import com.example.qa.internal.sync.AbstractSyncManager;
  * <p><b>No-leak (D3)</b> conservé : tout passe par {@code By}. La recherche imbriquée {@link #within(By)}
  * renvoie un {@code MobileSync} (retour covariant).
  *
- * <p>Squelette — signatures arrêtées (étape 6), corps réel à fournir (étape 8, quand le pilote mobile
- * démarre).
+ * <p>Squelette — signatures arrêtées (étape 6). Implémentation des gestes mobiles <b>différée hors
+ * périmètre étape 8</b> (pas de pilote mobile à ce stade) ; reportée au démarrage d'un pilote mobile.
  */
 public class MobileSync extends AbstractSyncManager {
 
