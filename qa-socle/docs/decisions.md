@@ -624,6 +624,12 @@ resources ne changent jamais à l'adoption**.
   **important** : les exceptions tierces ***checked*** (`IOException`/`FileNotFoundException` des I/O
   fichier, HTTP) **doivent être converties en unchecked à la frontière** — sinon l'API publique
   repartirait en `throws` checked, ce qu'on refuse.
+- **Aucune clause `throws` dans les signatures** (harmonisé étape 6) : les exceptions étant unchecked,
+  l'API publique **ne déclare pas** `throws <Exception>` — idiome standard (Selenium/Serenity/JUnit n'en
+  déclarent pas non plus). Les exceptions susceptibles d'être levées restent **documentées via `@throws`
+  en Javadoc**, jamais dans la signature. *(Correctif : les `throws SyncException` / `throws
+  DataFileException` qui subsistaient sur `sync` et `data` ont été retirés pour cet alignement ; les
+  imports d'exception devenus inutiles ont été supprimés.)*
 - **Racine concrète `QaToolkitException`** (package `api.exception`) : un seul `catch` attrape toute
   erreur d'origine socle (clé pour l'outillage de maintenance, D9). Concrète → levable directement
   pour une erreur transverse ne relevant d'aucun domaine.

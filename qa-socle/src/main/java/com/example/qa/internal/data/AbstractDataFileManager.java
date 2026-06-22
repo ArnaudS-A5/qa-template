@@ -20,26 +20,26 @@ import com.example.qa.api.exception.DataFileException;
 public abstract class AbstractDataFileManager implements DataFileManager {
 
 	@Override
-	public List<Map<String, String>> readRows() throws DataFileException {
+	public List<Map<String, String>> readRows() {
 		return null;
 	}
 
 	@Override
-	public List<Map<String, String>> readRows(String source) throws DataFileException {
+	public List<Map<String, String>> readRows(String source) {
 		return null;
 	}
 
 	@Override
-	public String getValue(int rowIndex, String column) throws DataFileException {
+	public String getValue(int rowIndex, String column) {
 		return null;
 	}
 
 	@Override
-	public void writeRows(List<Map<String, String>> rows) throws DataFileException {
+	public void writeRows(List<Map<String, String>> rows) {
 	}
 
 	@Override
-	public void writeRows(String source, List<Map<String, String>> rows) throws DataFileException {
+	public void writeRows(String source, List<Map<String, String>> rows) {
 	}
 
 	// ============================================================================================
@@ -53,7 +53,7 @@ public abstract class AbstractDataFileManager implements DataFileManager {
 	 * @return les lignes brutes, chaque ligne étant la liste ordonnée de ses cellules
 	 * @throws DataFileException en cas d'échec de lecture propre au format
 	 */
-	protected abstract List<List<String>> readRawRows(String source) throws DataFileException;
+	protected abstract List<List<String>> readRawRows(String source);
 
 	/**
 	 * Écrit les lignes brutes (1ʳᵉ ligne = en-têtes) dans la source, sans interprétation commune.
@@ -62,5 +62,5 @@ public abstract class AbstractDataFileManager implements DataFileManager {
 	 * @param rawRows les lignes brutes à écrire (en-têtes inclus)
 	 * @throws DataFileException en cas d'échec d'écriture propre au format
 	 */
-	protected abstract void writeRawRows(String source, List<List<String>> rawRows) throws DataFileException;
+	protected abstract void writeRawRows(String source, List<List<String>> rawRows);
 }

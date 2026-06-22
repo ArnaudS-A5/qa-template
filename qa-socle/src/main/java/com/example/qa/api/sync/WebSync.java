@@ -2,7 +2,6 @@ package com.example.qa.api.sync;
 
 import java.util.List;
 import org.openqa.selenium.By;
-import com.example.qa.api.exception.SyncException;
 import com.example.qa.internal.sync.AbstractSyncManager;
 
 /**
@@ -23,7 +22,7 @@ import com.example.qa.internal.sync.AbstractSyncManager;
 public class WebSync extends AbstractSyncManager {
 
 	@Override
-	public WebSync within(By container) throws SyncException {
+	public WebSync within(By container) {
 		return null;
 	}
 
@@ -32,23 +31,23 @@ public class WebSync extends AbstractSyncManager {
 	// ============================================================================================
 
 	/** Soumet le formulaire contenant l'élément cible (WebElement#submit). */
-	public void submit(By locator) throws SyncException {
+	public void submit(By locator) {
 	}
 
 	/** Double-clic sur l'élément cible (WebElementFacade#doubleClick). */
-	public void doubleClick(By locator) throws SyncException {
+	public void doubleClick(By locator) {
 	}
 
 	/** Clic droit / contextuel sur l'élément cible (WebElementFacade#contextClick). */
-	public void contextClick(By locator) throws SyncException {
+	public void contextClick(By locator) {
 	}
 
 	/** Saisit du texte puis presse Tab (WebElementFacade#typeAndTab). */
-	public void typeAndTab(By locator, String value) throws SyncException {
+	public void typeAndTab(By locator, String value) {
 	}
 
 	/** Donne le focus fenêtre à l'élément cible (WebElementFacade#setWindowFocus). */
-	public void setWindowFocus(By locator) throws SyncException {
+	public void setWindowFocus(By locator) {
 	}
 
 	// ============================================================================================
@@ -56,70 +55,70 @@ public class WebSync extends AbstractSyncManager {
 	// ============================================================================================
 
 	/** Sélectionne une option par son libellé visible (WebElementFacade#selectByVisibleText). */
-	public void selectByLabel(By locator, String label) throws SyncException {
+	public void selectByLabel(By locator, String label) {
 	}
 
 	/** Sélectionne une option par sa valeur (WebElementFacade#selectByValue). */
-	public void selectByValue(By locator, String value) throws SyncException {
+	public void selectByValue(By locator, String value) {
 	}
 
 	/** Sélectionne une option par son index (WebElementFacade#selectByIndex). */
-	public void selectByIndex(By locator, int index) throws SyncException {
+	public void selectByIndex(By locator, int index) {
 	}
 
 	/** Désélectionne une option par son libellé visible (WebElementFacade#deselectByVisibleText). */
-	public void deselectByLabel(By locator, String label) throws SyncException {
+	public void deselectByLabel(By locator, String label) {
 	}
 
 	/** Désélectionne une option par sa valeur (WebElementFacade#deselectByValue). */
-	public void deselectByValue(By locator, String value) throws SyncException {
+	public void deselectByValue(By locator, String value) {
 	}
 
 	/** Désélectionne une option par son index (WebElementFacade#deselectByIndex). */
-	public void deselectByIndex(By locator, int index) throws SyncException {
+	public void deselectByIndex(By locator, int index) {
 	}
 
 	/** Désélectionne toutes les options (WebElementFacade#deselectAll). */
-	public void deselectAll(By locator) throws SyncException {
+	public void deselectAll(By locator) {
 	}
 
 	/** Libellés visibles de toutes les options de la liste (WebElementFacade#getSelectOptions). */
-	public List<String> getSelectOptions(By locator) throws SyncException {
+	public List<String> getSelectOptions(By locator) {
 		return null;
 	}
 
 	/** Valeurs de toutes les options de la liste (WebElementFacade#getSelectOptionValues). */
-	public List<String> getSelectOptionValues(By locator) throws SyncException {
+	public List<String> getSelectOptionValues(By locator) {
 		return null;
 	}
 
 	/** Libellé visible de la 1ʳᵉ option sélectionnée (WebElementFacade#getFirstSelectedOptionVisibleText). */
-	public String getSelectedLabel(By locator) throws SyncException {
+	public String getSelectedLabel(By locator) {
 		return null;
 	}
 
 	/** Libellés visibles de toutes les options sélectionnées (WebElementState#getSelectedVisibleTexts). */
-	public List<String> getSelectedLabels(By locator) throws SyncException {
+	public List<String> getSelectedLabels(By locator) {
 		return null;
 	}
 
 	/** Valeur de la 1ʳᵉ option sélectionnée (WebElementFacade#getFirstSelectedOptionValue). */
-	public String getSelectedValue(By locator) throws SyncException {
+	public String getSelectedValue(By locator) {
 		return null;
 	}
 
 	/** Valeurs de toutes les options sélectionnées (WebElementState#getSelectedValues). */
-	public List<String> getSelectedValues(By locator) throws SyncException {
+	public List<String> getSelectedValues(By locator) {
 		return null;
 	}
 
 	/** La liste déroulante contient-elle l'option donnée (WebElementState#containsSelectOption). */
-	public boolean containsSelectOption(By locator, String value) throws SyncException {
+	public boolean containsSelectOption(By locator, String value) {
 		return false;
 	}
 
 	/** Échoue si la liste ne contient pas l'option sélectionnée donnée (WebElementState#shouldContainSelectedOption). */
-	public void shouldContainSelectedOption(By locator, String textValue) throws SyncException {
+	public void shouldContainSelectedOption(By locator, String textValue) {
 	}
 
 	// ============================================================================================
@@ -127,27 +126,27 @@ public class WebSync extends AbstractSyncManager {
 	// ============================================================================================
 
 	/** Texte interne brut, y compris masqué (WebElementFacade#getTextContent). */
-	public String getTextContent(By locator) throws SyncException {
+	public String getTextContent(By locator) {
 		return null;
 	}
 
 	/** Libellé ARIA résolu par Serenity (WebElementFacade#getAriaLabel). */
-	public String getAriaLabel(By locator) throws SyncException {
+	public String getAriaLabel(By locator) {
 		return null;
 	}
 
 	/** Valeur calculée d'une propriété CSS (WebElement#getCssValue). */
-	public String getCssValue(By locator, String propertyName) throws SyncException {
+	public String getCssValue(By locator, String propertyName) {
 		return null;
 	}
 
 	/** L'élément cible porte-t-il la classe CSS donnée (WebElementFacade#hasClass). */
-	public boolean hasClass(By locator, String cssClassName) throws SyncException {
+	public boolean hasClass(By locator, String cssClassName) {
 		return false;
 	}
 
 	/** Le conteneur cible contient-il des éléments correspondant au sélecteur (WebElementFacade#containsElements). */
-	public boolean containsElements(By locator, By childSelector) throws SyncException {
+	public boolean containsElements(By locator, By childSelector) {
 		return false;
 	}
 }

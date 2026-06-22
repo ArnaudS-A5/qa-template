@@ -30,7 +30,7 @@ public interface DataFileManager {
 	 * @return les lignes, clé = en-tête de colonne ; liste vide si aucune ligne de données
 	 * @throws DataFileException en cas d'échec de lecture ou d'en-têtes invalides
 	 */
-	List<Map<String, String>> readRows() throws DataFileException;
+	List<Map<String, String>> readRows();
 
 	/**
 	 * Lit toutes les lignes d'une source nommée (nom de feuille Excel ; ignoré/òu nom logique en CSV).
@@ -39,7 +39,7 @@ public interface DataFileManager {
 	 * @return les lignes, clé = en-tête de colonne
 	 * @throws DataFileException en cas d'échec de lecture, de source introuvable ou d'en-têtes invalides
 	 */
-	List<Map<String, String>> readRows(String source) throws DataFileException;
+	List<Map<String, String>> readRows(String source);
 
 	/**
 	 * Accès ciblé à une cellule : valeur de la colonne {@code column} à la ligne d'index {@code rowIndex}
@@ -50,7 +50,7 @@ public interface DataFileManager {
 	 * @return la valeur de la cellule (chaîne), jamais {@code null} (cellule vide → chaîne vide)
 	 * @throws DataFileException si l'index est hors bornes ou la colonne inconnue
 	 */
-	String getValue(int rowIndex, String column) throws DataFileException;
+	String getValue(int rowIndex, String column);
 
 	/**
 	 * Écrit (ou réécrit) un jeu de lignes dans la source par défaut. Les en-têtes sont déduits des clés
@@ -59,7 +59,7 @@ public interface DataFileManager {
 	 * @param rows les lignes à écrire (clé = en-tête de colonne)
 	 * @throws DataFileException en cas d'échec d'écriture
 	 */
-	void writeRows(List<Map<String, String>> rows) throws DataFileException;
+	void writeRows(List<Map<String, String>> rows);
 
 	/**
 	 * Écrit (ou réécrit) un jeu de lignes dans une source nommée (feuille Excel).
@@ -68,5 +68,5 @@ public interface DataFileManager {
 	 * @param rows   les lignes à écrire (clé = en-tête de colonne)
 	 * @throws DataFileException en cas d'échec d'écriture
 	 */
-	void writeRows(String source, List<Map<String, String>> rows) throws DataFileException;
+	void writeRows(String source, List<Map<String, String>> rows);
 }

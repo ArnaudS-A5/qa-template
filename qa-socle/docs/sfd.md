@@ -302,11 +302,10 @@ l'outillage de maintenance. **Composants** : `QaToolkitException` + `SyncExcepti
 | **BF-ERR-06** | `SyncException` **doit** déduire son message différencié de la `cause` du `TimeoutException` Selenium (dernière exception ignorée) — cf. BF-SYNC-15. |
 | **BF-ERR-07** | Le message d'une `SecretException` **ne doit jamais** contenir de secret en clair. |
 
-**⚠️ Point ouvert (cohérence à trancher avant le gel)** : **politique des clauses `throws`**.
-Actuellement `sync` et `data` déclarent `throws <exception unchecked>` sur leurs méthodes, tandis que
-`secret` et `reporting` ne déclarent rien (seulement `@throws` en Javadoc). La clause `throws` faisant
-partie de la signature gelée, **harmoniser** (tout déclarer, ou rien déclarer) et **acter le choix dans
-D18**.
+**Politique des clauses `throws` (tranchée, D18)** : les exceptions étant unchecked, **aucune signature
+ne déclare `throws`** ; les exceptions sont documentées en `@throws` Javadoc uniquement. Les
+`throws SyncException`/`DataFileException` qui subsistaient sur `sync`/`data` ont été retirés (idiome
+standard Selenium/Serenity/JUnit).
 
 ---
 
@@ -382,7 +381,7 @@ non-régression **bloque** la release (gate, lié à la CI Jenkins D7).
 | REPORTING | BF-REP-01…10 | `ReportingManager`, `TestExecutionResult`, `ExecutionStatus`, `AlmApiClient` | D13 | 6 → 8 | ✅ figées |
 | FAIL | BF-FAIL-01…07 | `TestFailureManager` | D8, D16, D16-bis | 6 → 8 | ⚠️ à cadrer |
 | LOG | BF-LOG-01…05 | `LogbackConfigurator` | D14, D16-bis, D17 | 6 → 8 | ✅ constantes / ⚠️ arbitrage scope |
-| ERR | BF-ERR-01…07 | `QaToolkitException` + 4 sous-types | D18 | 3 (✅) | ✅ figées / ⚠️ politique `throws` |
+| ERR | BF-ERR-01…07 | `QaToolkitException` + 4 sous-types | D18 | 3 (✅) | ✅ figées (sans `throws`) |
 | CONF | BF-CONF-01…04 | (transverse, Serenity) | D19 | 4 (✅) → 8 | n/a |
 | VER | BF-VER-01…08 | `qa-parent`, Wrapper, Enforcer | D6, D6-bis, D7 | 2, 10 | 🟡 partiel |
 | VAL | BF-VAL-01…05 | projet consommateur, WireMock, fixtures | D20 | 5 (✅) → 8/9 | n/a |
@@ -393,10 +392,10 @@ non-régression **bloque** la release (gate, lié à la CI Jenkins D7).
 
 1. **Frontière API `sync`** (BF-SYNC) — `AbstractSyncManager` `internal` vs surface publique.
 2. **Format de masquage** (BF-MASK-04) — acter « 2 chars + 16 hexa SHA-256 » ou réviser.
-3. **Politique des clauses `throws`** (BF-ERR) — harmoniser sync/data ↔ secret/reporting.
-4. **Arbitrage scope Logback** (BF-LOG) — `compile` vs `runtime` pour le `Configurator`.
-5. **Clés + contrat de sortie `failure`** (BF-FAIL-05/06) — figer noms/défauts et format `KO__`.
-6. **Factories `secret`/`reporting`** (BF-SEC, BF-REP) — confirmer ou écarter.
-7. **Gouvernance versioning** (BF-VER) — N de dépréciation, critère de publication, gate de release.
-8. **Confirmations externes** — précédence config Serenity 4.2.22, version ALM (~18.4), format du
+3. **Arbitrage scope Logback** (BF-LOG) — `compile` vs `runtime` pour le `Configurator`.
+4. **Contrat de sortie `failure`** (BF-FAIL-06) — graver le format `KO__` comme contrat versionné
+   (les clés `qa.failure.artefacts.*` sont, elles, déjà figées).
+5. **Factories `secret`/`reporting`** (BF-SEC, BF-REP) — confirmer ou écarter.
+6. **Gouvernance versioning** (BF-VER) — N de dépréciation, critère de publication, gate de release.
+7. **Confirmations externes** — précédence config Serenity 4.2.22, version ALM (~18.4), format du
    fichier de mapping ALM.

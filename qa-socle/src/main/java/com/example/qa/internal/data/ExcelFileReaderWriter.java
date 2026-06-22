@@ -2,7 +2,6 @@ package com.example.qa.internal.data;
 
 import java.nio.file.Path;
 import java.util.List;
-import com.example.qa.api.exception.DataFileException;
 
 /**
  * Lecture/écriture de jeux de données au format <b>Excel</b> (Apache POI), y compris classeurs
@@ -29,11 +28,11 @@ public class ExcelFileReaderWriter extends AbstractDataFileManager {
 	}
 
 	@Override
-	protected List<List<String>> readRawRows(String source) throws DataFileException {
+	protected List<List<String>> readRawRows(String source) {
 		return null;
 	}
 
 	@Override
-	protected void writeRawRows(String source, List<List<String>> rawRows) throws DataFileException {
+	protected void writeRawRows(String source, List<List<String>> rawRows) {
 	}
 }

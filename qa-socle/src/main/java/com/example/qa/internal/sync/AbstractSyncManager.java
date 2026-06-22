@@ -48,7 +48,7 @@ public abstract class AbstractSyncManager {
 	 * @return le résultat de la condition une fois satisfaite
 	 * @throws SyncException si la condition n'est pas satisfaite avant le timeout
 	 */
-	protected <T> T fluentWait(Duration timeout, Supplier<T> condition) throws SyncException {
+	protected <T> T fluentWait(Duration timeout, Supplier<T> condition) {
 		return null;
 	}
 
@@ -61,18 +61,18 @@ public abstract class AbstractSyncManager {
 	 * de handle : on chaîne des {@code By} relatifs, ré-résolus à chaque action (jamais stale). Chaque
 	 * sous-classe précise le type de retour ({@code WebSync} ou {@code MobileSync}).
 	 */
-	public abstract AbstractSyncManager within(By container) throws SyncException;
+	public abstract AbstractSyncManager within(By container);
 
 	// ============================================================================================
 	// Actions communes
 	// ============================================================================================
 
 	/** Clique/active l'élément cible une fois visible et interactable (WebElement#click). */
-	public void click(By locator) throws SyncException {
+	public void click(By locator) {
 	}
 
 	/** Saisit du texte après avoir vidé le champ (WebElementFacade#type). */
-	public void type(By locator, CharSequence... keysToSend) throws SyncException {
+	public void type(By locator, CharSequence... keysToSend) {
 	}
 
 	/**
@@ -80,15 +80,15 @@ public abstract class AbstractSyncManager {
 	 * est tapée dans le DOM, mais le log d'action ne montre que le rendu <b>masqué</b> ({@code secret}
 	 * via son {@code toString()}). Point unique où un {@link Secret} est déballé pour la saisie.
 	 */
-	public void type(By locator, Secret secret) throws SyncException {
+	public void type(By locator, Secret secret) {
 	}
 
 	/** Saisit du texte puis presse Entrée (WebElementFacade#typeAndEnter). */
-	public void typeAndEnter(By locator, String value) throws SyncException {
+	public void typeAndEnter(By locator, String value) {
 	}
 
 	/** Vide la valeur de l'élément cible (WebElement#clear). */
-	public void clear(By locator) throws SyncException {
+	public void clear(By locator) {
 	}
 
 	// ============================================================================================
@@ -96,47 +96,47 @@ public abstract class AbstractSyncManager {
 	// ============================================================================================
 
 	/** Texte visible de l'élément cible (WebElement#getText). */
-	public String getText(By locator) throws SyncException {
+	public String getText(By locator) {
 		return null;
 	}
 
 	/** Texte « effectif » résolu par Serenity (valeur de champ ou texte selon l'élément) (WebElementState#getTextValue). */
-	public String getTextValue(By locator) throws SyncException {
+	public String getTextValue(By locator) {
 		return null;
 	}
 
 	/** Valeur de l'attribut {@code value} (WebElementFacade#getValue). */
-	public String getValue(By locator) throws SyncException {
+	public String getValue(By locator) {
 		return null;
 	}
 
 	/** Nom de balise / type d'élément (WebElement#getTagName). */
-	public String getTagName(By locator) throws SyncException {
+	public String getTagName(By locator) {
 		return null;
 	}
 
 	/** Valeur résolue attribut/propriété (WebElement#getAttribute). */
-	public String getAttribute(By locator, String name) throws SyncException {
+	public String getAttribute(By locator, String name) {
 		return null;
 	}
 
 	/** Valeur de l'attribut DOM/élément (WebElement#getDomAttribute). */
-	public String getDomAttribute(By locator, String name) throws SyncException {
+	public String getDomAttribute(By locator, String name) {
 		return null;
 	}
 
 	/** Valeur de la propriété DOM/élément (WebElement#getDomProperty). */
-	public String getDomProperty(By locator, String name) throws SyncException {
+	public String getDomProperty(By locator, String name) {
 		return null;
 	}
 
 	/** Rôle WAI-ARIA / rôle d'accessibilité calculé (WebElement#getAriaRole). */
-	public String getAriaRole(By locator) throws SyncException {
+	public String getAriaRole(By locator) {
 		return null;
 	}
 
 	/** Nom accessible calculé (WebElement#getAccessibleName). */
-	public String getAccessibleName(By locator) throws SyncException {
+	public String getAccessibleName(By locator) {
 		return null;
 	}
 
@@ -145,57 +145,57 @@ public abstract class AbstractSyncManager {
 	// ============================================================================================
 
 	/** L'élément cible est-il sélectionné/coché (WebElement#isSelected). */
-	public boolean isSelected(By locator) throws SyncException {
+	public boolean isSelected(By locator) {
 		return false;
 	}
 
 	/** L'élément cible est-il activé (WebElement#isEnabled). */
-	public boolean isEnabled(By locator) throws SyncException {
+	public boolean isEnabled(By locator) {
 		return false;
 	}
 
 	/** L'élément cible est-il désactivé (WebElementState#isDisabled). */
-	public boolean isDisabled(By locator) throws SyncException {
+	public boolean isDisabled(By locator) {
 		return false;
 	}
 
 	/** L'élément cible est-il affiché, avec attente courte (WebElementState#isVisible). */
-	public boolean isDisplayed(By locator) throws SyncException {
+	public boolean isDisplayed(By locator) {
 		return false;
 	}
 
 	/** L'élément cible est-il affiché immédiatement, sans attente (WebElementState#isCurrentlyVisible). */
-	public boolean isCurrentlyVisible(By locator) throws SyncException {
+	public boolean isCurrentlyVisible(By locator) {
 		return false;
 	}
 
 	/** L'élément cible est-il interactable / cliquable (WebElementState#isClickable). */
-	public boolean isClickable(By locator) throws SyncException {
+	public boolean isClickable(By locator) {
 		return false;
 	}
 
 	/** L'élément cible est-il présent dans l'arbre (WebElementState#isPresent). */
-	public boolean isPresent(By locator) throws SyncException {
+	public boolean isPresent(By locator) {
 		return false;
 	}
 
 	/** L'élément cible a-t-il le focus (WebElementState#hasFocus). */
-	public boolean hasFocus(By locator) throws SyncException {
+	public boolean hasFocus(By locator) {
 		return false;
 	}
 
 	/** L'élément cible contient-il le texte donné (WebElementState#containsText). */
-	public boolean containsText(By locator, String value) throws SyncException {
+	public boolean containsText(By locator, String value) {
 		return false;
 	}
 
 	/** L'élément cible a-t-il exactement ce texte (WebElementState#containsOnlyText). */
-	public boolean containsOnlyText(By locator, String value) throws SyncException {
+	public boolean containsOnlyText(By locator, String value) {
 		return false;
 	}
 
 	/** L'élément cible contient-il la valeur donnée (WebElementState#containsValue). */
-	public boolean containsValue(By locator, String value) throws SyncException {
+	public boolean containsValue(By locator, String value) {
 		return false;
 	}
 
@@ -204,51 +204,51 @@ public abstract class AbstractSyncManager {
 	// ============================================================================================
 
 	/** Échoue si l'élément n'est pas visible (WebElementState#shouldBeVisible). */
-	public void shouldBeVisible(By locator) throws SyncException {
+	public void shouldBeVisible(By locator) {
 	}
 
 	/** Échoue si l'élément n'est pas visible immédiatement (WebElementState#shouldBeCurrentlyVisible). */
-	public void shouldBeCurrentlyVisible(By locator) throws SyncException {
+	public void shouldBeCurrentlyVisible(By locator) {
 	}
 
 	/** Échoue si l'élément est visible (WebElementState#shouldNotBeVisible). */
-	public void shouldNotBeVisible(By locator) throws SyncException {
+	public void shouldNotBeVisible(By locator) {
 	}
 
 	/** Échoue si l'élément n'est pas présent (WebElementState#shouldBePresent). */
-	public void shouldBePresent(By locator) throws SyncException {
+	public void shouldBePresent(By locator) {
 	}
 
 	/** Échoue si l'élément est présent (WebElementState#shouldNotBePresent). */
-	public void shouldNotBePresent(By locator) throws SyncException {
+	public void shouldNotBePresent(By locator) {
 	}
 
 	/** Échoue si l'élément n'est pas activé (WebElementState#shouldBeEnabled). */
-	public void shouldBeEnabled(By locator) throws SyncException {
+	public void shouldBeEnabled(By locator) {
 	}
 
 	/** Échoue si l'élément est activé (WebElementState#shouldNotBeEnabled). */
-	public void shouldNotBeEnabled(By locator) throws SyncException {
+	public void shouldNotBeEnabled(By locator) {
 	}
 
 	/** Échoue si l'élément n'est pas sélectionné (WebElementState#shouldBeSelected). */
-	public void shouldBeSelected(By locator) throws SyncException {
+	public void shouldBeSelected(By locator) {
 	}
 
 	/** Échoue si l'élément est sélectionné (WebElementState#shouldNotBeSelected). */
-	public void shouldNotBeSelected(By locator) throws SyncException {
+	public void shouldNotBeSelected(By locator) {
 	}
 
 	/** Échoue si l'élément ne contient pas le texte donné (WebElementState#shouldContainText). */
-	public void shouldContainText(By locator, String textValue) throws SyncException {
+	public void shouldContainText(By locator, String textValue) {
 	}
 
 	/** Échoue si l'élément ne contient pas exactement ce texte (WebElementState#shouldContainOnlyText). */
-	public void shouldContainOnlyText(By locator, String textValue) throws SyncException {
+	public void shouldContainOnlyText(By locator, String textValue) {
 	}
 
 	/** Échoue si l'élément contient le texte donné (WebElementState#shouldNotContainText). */
-	public void shouldNotContainText(By locator, String textValue) throws SyncException {
+	public void shouldNotContainText(By locator, String textValue) {
 	}
 
 	// ============================================================================================
@@ -256,22 +256,22 @@ public abstract class AbstractSyncManager {
 	// ============================================================================================
 
 	/** Coin supérieur gauche de l'élément rendu (WebElement#getLocation). */
-	public Point getLocation(By locator) throws SyncException {
+	public Point getLocation(By locator) {
 		return null;
 	}
 
 	/** Largeur/hauteur de l'élément rendu (WebElement#getSize). */
-	public Dimension getSize(By locator) throws SyncException {
+	public Dimension getSize(By locator) {
 		return null;
 	}
 
 	/** Position et taille de l'élément rendu (WebElement#getRect). */
-	public Rectangle getRect(By locator) throws SyncException {
+	public Rectangle getRect(By locator) {
 		return null;
 	}
 
 	/** Capture d'écran de l'élément cible (WebElement#getScreenshotAs / TakesScreenshot). */
-	public <X> X getScreenshotAs(By locator, OutputType<X> target) throws SyncException {
+	public <X> X getScreenshotAs(By locator, OutputType<X> target) {
 		return null;
 	}
 
@@ -280,12 +280,12 @@ public abstract class AbstractSyncManager {
 	// ============================================================================================
 
 	/** Nombre d'éléments correspondant au locator (remplace findElements brut). */
-	public int count(By locator) throws SyncException {
+	public int count(By locator) {
 		return 0;
 	}
 
 	/** Textes visibles de tous les éléments correspondant au locator (information extraite, non stale). */
-	public List<String> getTexts(By locator) throws SyncException {
+	public List<String> getTexts(By locator) {
 		return null;
 	}
 
@@ -294,34 +294,34 @@ public abstract class AbstractSyncManager {
 	// ============================================================================================
 
 	/** Attend que l'élément cible devienne visible (WebElementFacade#waitUntilVisible). */
-	public void waitUntilVisible(By locator) throws SyncException {
+	public void waitUntilVisible(By locator) {
 	}
 
 	/** Attend que l'élément cible devienne présent (WebElementFacade#waitUntilPresent). */
-	public void waitUntilPresent(By locator) throws SyncException {
+	public void waitUntilPresent(By locator) {
 	}
 
 	/** Attend que l'élément cible devienne invisible (WebElementFacade#waitUntilNotVisible). */
-	public void waitUntilNotVisible(By locator) throws SyncException {
+	public void waitUntilNotVisible(By locator) {
 	}
 
 	/** Attend que l'élément cible devienne cliquable/interactable (WebElementFacade#waitUntilClickable). */
-	public void waitUntilClickable(By locator) throws SyncException {
+	public void waitUntilClickable(By locator) {
 	}
 
 	/** Attend que l'élément cible devienne activé (WebElementFacade#waitUntilEnabled). */
-	public void waitUntilEnabled(By locator) throws SyncException {
+	public void waitUntilEnabled(By locator) {
 	}
 
 	/** Attend que l'élément cible devienne désactivé (WebElementFacade#waitUntilDisabled). */
-	public void waitUntilDisabled(By locator) throws SyncException {
+	public void waitUntilDisabled(By locator) {
 	}
 
 	/** Attend la présence/interactabilité de l'élément cible jusqu'au timeout fourni. */
-	public void waitForElement(By locator, Duration timeout) throws SyncException {
+	public void waitForElement(By locator, Duration timeout) {
 	}
 
 	/** Attend la disparition de l'élément cible jusqu'au timeout fourni. */
-	public void waitForElementToDisappear(By locator, Duration timeout) throws SyncException {
+	public void waitForElementToDisappear(By locator, Duration timeout) {
 	}
 }
