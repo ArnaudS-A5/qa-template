@@ -22,7 +22,7 @@ import org.junit.platform.launcher.TestIdentifier;
  * auto-découvert par présence du jar dans cette stack est le {@code TestExecutionListener} JUnit.
  *
  * <p><b>Comportement</b> : sur {@link #executionFinished} en échec, et si {@link #ENABLED_KEY} est
- * actif, {@link #captureFailure()} produit — <b>pour un test KO uniquement</b> — le dossier
+ * actif, {@link #writeArtefacts()} produit — <b>pour un test KO uniquement</b> — le dossier
  * {@code KO__{ENV}__{Test}__{ts}/} avec ses trois fichiers ({@code ERROR_*.log} synthétique,
  * {@code FAIL_*.log} trace complète, dump HTML de la step). Aucun artefact pour un test OK.
  *
@@ -63,7 +63,7 @@ public class TestFailureManager implements TestExecutionListener {
     /**
      * Hook de cycle de vie JUnit : appelé en fin d'exécution de chaque test. Coquille (étape 6).
      * Étape 8 : si {@code testExecutionResult.getStatus() == FAILED} et que {@link #ENABLED_KEY} est
-     * actif, déléguer à {@link #captureFailure()}. (Le {@code {ENV}} du nommage est lu de l'environnement
+     * actif, déléguer à {@link #writeArtefacts()}. (Le {@code {ENV}} du nommage est lu de l'environnement
      * Serenity actif — propriété {@code environment}, D19 — jamais d'une clé socle dédiée.)
      */
     @Override
@@ -78,7 +78,7 @@ public class TestFailureManager implements TestExecutionListener {
      * de l'<b>environnement Serenity actif</b> (propriété {@code environment}, D19), pas d'une clé
      * dédiée. Coquille (étape 6) — corps réel à l'étape 8.
      */
-    public void captureFailure() {
+    public void writeArtefacts() {
         // Coquille (étape 6) : écriture du dossier KO__ + 3 fichiers à implémenter en étape 8.
     }
 }

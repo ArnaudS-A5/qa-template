@@ -391,7 +391,7 @@ part de la mécanique**, et **comment le consommateur le règle**. À implément
   - À la fin d'un test (`executionFinished`), `TestFailureManager` lit le résultat et, **uniquement en cas d'échec**,
     récupère le `TestOutcome` Serenity
     (`StepEventBus.getEventBus().getBaseStepListener().getCurrentTestOutcome()` → steps + exception)
-    puis délègue à `TestFailureManager#captureFailure`. *(L'instant exact de lecture — `executionFinished`
+    puis délègue à `TestFailureManager#writeArtefacts`. *(L'instant exact de lecture — `executionFinished`
     JUnit vs `testFinished` Serenity — est à confirmer à l'implémentation, étape 8.)*
 - **Rejet explicite de l'option annotation** (ex. `@ExtendWith(QaFailureExtension.class)`) : une
   annotation **oubliée** dans un projet ne produirait **aucun artefact, sans erreur** → personne ne
