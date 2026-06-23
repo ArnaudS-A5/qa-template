@@ -125,9 +125,10 @@ réimplémenté par les sous-classes (D3 maj). À l'intérieur, l'action délèg
 locator après mutation DOM sans changement d'URL, (b) les deux messages différenciés, (c) l'absence de
 tout `WebElement` exposé dans l'API.
 
-**⚠️ Point ouvert** : frontière API — `WebSync`/`MobileSync` (`api`) héritent toute leur surface de
-`AbstractSyncManager` (`internal`). Décider si ce contrat commun reste `internal` (garde-fou compat
-élargi), monte en `api`, ou passe par une façade, **avant le gel** (roadmap étape 6).
+**Frontière API (tranchée, D15 — option A)** : `AbstractSyncManager` reste `internal`, mais ses méthodes
+publiques (héritées par `WebSync`/`MobileSync`) sont **gelées** → garde-fou japicmp **élargi** (étape 10).
+Les façades restent **sous-classables / méthodes non-`final`** → échappatoire « bris de glace » (sous-classe
+nommée via un point d'obtention unique ; mode opératoire dans le Javadoc des façades).
 
 ---
 
@@ -388,11 +389,10 @@ non-régression **bloque** la release (gate, lié à la CI Jenkins D7).
 
 ## 7. Points ouverts consolidés (à clore avant gel / implémentation)
 
-1. **Frontière API `sync`** (BF-SYNC) — `AbstractSyncManager` `internal` vs surface publique.
-2. **Arbitrage scope Logback** (BF-LOG) — `compile` vs `runtime` pour le `Configurator`.
-3. **Contrat de sortie `failure`** (BF-FAIL-06) — graver le format `KO__` comme contrat versionné
+1. **Arbitrage scope Logback** (BF-LOG) — `compile` vs `runtime` pour le `Configurator`.
+2. **Contrat de sortie `failure`** (BF-FAIL-06) — graver le format `KO__` comme contrat versionné
    (les clés `qa.failure.artefacts.*` sont, elles, déjà figées).
-4. **Factories `secret`/`reporting`** (BF-SEC, BF-REP) — confirmer ou écarter.
-5. **Gouvernance versioning** (BF-VER) — N de dépréciation, critère de publication, gate de release.
-6. **Confirmations externes** — précédence config Serenity 4.2.22, version ALM (~18.4), format du
+3. **Factories `secret`/`reporting`** (BF-SEC, BF-REP) — confirmer ou écarter.
+4. **Gouvernance versioning** (BF-VER) — N de dépréciation, critère de publication, gate de release.
+5. **Confirmations externes** — précédence config Serenity 4.2.22, version ALM (~18.4), format du
    fichier de mapping ALM.

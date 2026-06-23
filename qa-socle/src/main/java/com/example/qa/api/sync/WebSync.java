@@ -17,6 +17,14 @@ import com.example.qa.internal.sync.AbstractSyncManager;
  * {@code WebElement} vivant. La recherche imbriquée {@link #within(By)} renvoie un {@code WebSync}
  * (retour covariant).
  *
+ * <p><b>Échappatoire « bris de glace »</b> (D15) : cette façade est volontairement <b>sous-classable</b>
+ * et ses méthodes <b>non-{@code final}</b>. En cas de bug bloquant de synchro côté projet, créer une
+ * <b>sous-classe nommée</b> qui surcharge la/les méthode(s) fautive(s) et l'instancier via un
+ * <b>point d'obtention unique</b> du projet (un seul endroit à basculer puis à restaurer ; PageObjects
+ * et tests intouchés, le type déclaré restant {@code WebSync}). Le correctif stable est ensuite
+ * <b>promu dans le socle</b> (changement de corps = non-breaking). Sous-classe <b>nommée</b> conseillée
+ * (plus facile à analyser/refactorer qu'une classe anonyme).
+ *
  * <p>Squelette — signatures arrêtées (étape 6), corps réel à fournir (étape 8).
  */
 public class WebSync extends AbstractSyncManager {

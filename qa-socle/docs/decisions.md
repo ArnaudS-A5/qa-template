@@ -383,6 +383,27 @@ Frontière entre le **contrat public** (consommé par les ~17 projets) et l'**in
   `api → internal` **interne au socle**, invisible du consommateur (il ne voit que `WebSync`).
 - Le périmètre `api` = exactement ce que japicmp surveillera (étape 10).
 
+### Frontière `sync` : moteur interne + surface gelée + échappatoire (acté étape 6 — option A)
+
+`WebSync`/`MobileSync` (`api`) héritent **toute** leur surface commune (actions/lectures/états/attentes
+par `By`) d'`AbstractSyncManager` (`internal`). Choix retenu (option A, après arbitrage) :
+
+- **`AbstractSyncManager` reste `internal`** — pas de déplacement en `api`, pas d'interface publique de
+  surface commune. Justifié par : **pas d'extension prévue** côté consommateur (utilisation seule) et
+  **pas de besoin de type commun** web/mobile (PageObjects séparés par plateforme, état de l'art).
+  L'option B (moteur en `api`) exposerait inutilement le moteur ; l'option C (interface ~60 méthodes)
+  ajouterait une surface à maintenir en double, sans bénéfice ici.
+- **Mais ses méthodes publiques font partie du contrat gelé** : le **garde-fou japicmp (étape 10) est
+  élargi** pour couvrir la surface publique héritée par `WebSync`/`MobileSync`. **Exception explicite à
+  « `internal` = libre de changer »** : les méthodes publiques du moteur ne sont **pas** libres (leur
+  retrait/modification casserait les 17 projets).
+- **Échappatoire « bris de glace »** : `WebSync`/`MobileSync` restent **sous-classables** et leurs
+  méthodes **non-`final`** (cohérent avec D19, qui n'impose `final` que sur les **champs**, pas sur les
+  méthodes/classes). En cas de bug bloquant de synchro, un projet surcharge la méthode fautive dans une
+  sous-classe, puis le correctif stable est **promu dans le socle** (changement de corps = non-breaking).
+  Le **mode opératoire** (sous-classe nommée + point d'instanciation unique) est documenté dans le
+  **Javadoc de `WebSync`/`MobileSync`**, pas ici.
+
 ## D16 — Capture d'échec : activation native + artefacts écrits par le socle (roadmap étape 6)
 
 Comment `TestFailureManager` (package `internal.failure`) est **déclenché**, **qui porte quelle

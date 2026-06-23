@@ -181,11 +181,10 @@ API autour d'`AbstractSyncManager`, l'arbitrage technique Logback `compile`/`run
 - [x] `ReportingManager` (+ `AlmApiClient`) — signatures de publication arrêtées : `publishStart(String almTestId)`
       + `publishEnd(TestExecutionResult)` ; `ExecutionStatus` + `TestExecutionResult` créés en `api.reporting`
       (cf. D13 mis à jour).
-- [ ] **Arbitrage frontière API `sync` avant gel** — `WebSync`/`MobileSync` sont publics (`api`) mais
-      héritent toute leur surface commune de `AbstractSyncManager` (`internal`). Décider si ce contrat
-      commun reste dans `internal` avec garde-fou compat élargi, s'il est déplacé en `api`, ou si une
-      autre forme de façade publique est retenue. Objectif : que le périmètre versionné reflète la
-      vraie surface consommable.
+- [x] **Frontière API `sync`** — **tranché (option A, cf. D15)** : `AbstractSyncManager` reste
+      `internal`, mais ses méthodes publiques (héritées par `WebSync`/`MobileSync`) sont **gelées** →
+      garde-fou japicmp **élargi** à l'étape 10. Façades **sous-classables / méthodes non-`final`** →
+      échappatoire « bris de glace » (mode opératoire dans le Javadoc des façades).
 - [ ] **Fixer la date de gel de l'API** une fois toutes les signatures arrêtées — **y compris les
       signatures de masquage du type `Secret`** (réf. étapes 2 et 7).
 
