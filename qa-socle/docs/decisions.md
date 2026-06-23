@@ -223,8 +223,10 @@ Le Git flow est documenté en Markdown pour être consommable par l'agent.
     sur `SecretManager` (interface) + `CyberArkApiClient` (impl).
 - Bénéfice : remplacer CyberArk = nouvelle impl + 1 ligne d'injection, **zéro changement** dans les appelants.
 - Tests d'intégration manuels déjà faits → mécanisme connu comme fonctionnel ; reste à industrialiser proprement.
-- **Squelettes créés** : `SecretManager` (package `api.secret`) + `CyberArkApiClient` (package
-  `internal.secret`), cf. D15. Le consommateur ne dépend que de `SecretManager`.
+- **Squelettes créés** : `SecretManager` (interface, `api.secret`) + `CyberArkApiClient` (impl,
+  `internal.secret`) + **`SecretManagers`** (factory publique, `api.secret`), cf. D15. Le consommateur
+  obtient le manager via `SecretManagers.get()` (tenu une fois) puis `secrets.getSecret("…")` — il ne
+  nomme jamais l'outil. Méthode **neutre** (`get()`, pas `cyberArk()`) : l'outil est de la config (D19).
 - **Aucune implémentation pour l'instant** (phase backlog / nommage).
 
 ### Format de masquage du type `Secret` (acté étape 6 — contrat de sortie versionné)
@@ -251,23 +253,38 @@ que le contrat de sortie `KO__`, cf. D16) :
   le mapping cas de test ↔ ALM, en priorité **`@WithTag`** (ex. `@WithTag("alm.testId:1042")`),
   lues par réflexion (`TestAnnotations`). `@Title` complète si besoin.
 - Version ALM cible : **à confirmer** (probablement ~18.4 — l'API varie selon la version, à figer avant impl).
-- **Squelettes créés** : `ReportingManager` (package `api.reporting`) + `AlmApiClient` (package
-  `internal.reporting`), cf. D15 — remplacent la classe unique `AlmReportingManager` qui mariait
-  l'outil au concept. Le consommateur ne dépend que de `ReportingManager`.
+- **Squelettes créés** : `ReportingManager` + `AlmApiClient` + `TestExecutionResult` + `ExecutionStatus`,
+  tous en **`internal.reporting`** (cf. **Activation AUTO** ci-dessous) — remplacent la classe unique
+  `AlmReportingManager` qui mariait l'outil au concept. `ReportingManager` reste le **seam de swap**
+  (ALM → autre), désormais interne.
+
+### Activation AUTO — reporting invisible du consommateur (acté étape 6)
+
+La remontée est **automatique**, comme la capture d'échec : un **listener interne** du socle
+(`TestExecutionListener` JUnit, même mécanisme que `failure`) appelle `publishStart` au **début** et
+`publishEnd` à la **fin** de chaque test. **Le consommateur ne fait que** poser `@WithTag` + configurer
+`qa.alm.*` — **aucune ligne d'appel, aucune factory**. Conséquence : **tout le domaine reporting est
+`internal`** (aucun type public — cf. D15) ; le consommateur ne référence jamais `ReportingManager` /
+`TestExecutionResult` / `ExecutionStatus`.
+
+**Résolution de l'ID ALM depuis `@WithTag` (lu par réflexion) :**
+- **aucun** tag `alm.testId` → test **non remonté** (opt-out **silencieux** par test) ;
+- **un** tag → remonté pour cet ID ;
+- **plusieurs** tags `alm.testId` → le **premier** est retenu (les autres ignorés).
 
 ### Mise à jour (étape 6) — API de publication, mapping et authentification
 
 Signatures arrêtées lors de l'écriture des coquilles typées (étape 6).
 
-#### API de publication (deux appels par test)
+#### API de publication (deux appels par test, émis par le listener)
 
 - `publishStart(String almTestId)` → appelé en **début de test** ; pousse le statut « In Progress » dans ALM.
 - `publishEnd(TestExecutionResult result)` → appelé en **fin de test** (quel que soit le résultat) ; pousse le statut final.
 
-`TestExecutionResult` est un **objet valeur neutre** (package `api.reporting`) : `almTestId` (String) + `status` (ExecutionStatus).
-Conçu extensible : des champs complémentaires (durée, message d'erreur…) seront ajoutés avant le gel sans rompre la signature de `publishEnd`.
+`TestExecutionResult` est un **objet valeur neutre** (package `internal.reporting`) : `almTestId` (String) + `status` (ExecutionStatus).
+Conçu extensible : des champs complémentaires (durée, message d'erreur…) pourront être ajoutés sans rompre la signature de `publishEnd`.
 
-`ExecutionStatus` est une **enum maison** (package `api.reporting`) : `IN_PROGRESS`, `PASSED`, `FAILED`.
+`ExecutionStatus` est une **enum maison** (package `internal.reporting`) : `IN_PROGRESS`, `PASSED`, `FAILED`.
 
 #### Clé de maintenance
 
@@ -372,7 +389,8 @@ Frontière entre le **contrat public** (consommé par les ~17 projets) et l'**in
 | `WebSync`, `MobileSync` | `api.sync` | types **déclarés** dans les PageObjects consommateurs (`private final WebSync`) |
 | `DataFileManager` | `api.data` | interface = contrat |
 | `SecretManager` | `api.secret` | interface = contrat |
-| `ReportingManager` | `api.reporting` | interface = contrat |
+| `SecretManagers` | `api.secret` | **factory publique** : seul accès au `SecretManager`, cache `CyberArkApiClient` (idiome JDK `Executors`) |
+| `ReportingManager`, `TestExecutionResult`, `ExecutionStatus` | `internal.reporting` | reporting **AUTO** (listener du socle) → **aucun type public** ; `ReportingManager` reste le **seam de swap** interne (D13) |
 | `Secret` | `api.secret` | type « valeur sensible » manipulé par le consommateur ; signatures de masquage posées, corps à fournir en étape 7/8 |
 | `QaToolkitException` + `SyncException` / `DataFileException` / `SecretException` / `ReportingException` | `api.exception` | hiérarchie d'erreurs **publique** (contrat), unchecked — cf. D18 ; dans le périmètre japicmp (étape 10) |
 | `AbstractSyncManager` | `internal.sync` | moteur, extension non prévue |
@@ -385,11 +403,12 @@ Frontière entre le **contrat public** (consommé par les ~17 projets) et l'**in
 
 ### Conséquences
 
-- **Factories publiques** (`api`) : `DataFiles` existe pour `data` ; les points d'accès `secret` et
-  `reporting` restent à confirmer/créer à l'étape 6 comme seuls accès aux impls `internal` si ces
-  domaines doivent être instanciés par le consommateur.
-- Pour `failure` : **ni factory ni type public**. Activation **native** (ServiceLoader), invisible
-  du consommateur — cf. **D16**.
+- **Factories publiques** (`api`) — **tranché étape 6** : `DataFiles` pour `data` ; **`SecretManagers`**
+  pour `secret` (créée — seul accès au `SecretManager`, cache CyberArk). **Pas de factory `reporting`** :
+  le reporting est **AUTO** (listener du socle, cf. D13) → tout le domaine reporting est `internal`, le
+  consommateur ne l'instancie jamais.
+- Pour `failure` **et `reporting`** : **ni factory ni type public**. Activation **native** (listener
+  `TestExecutionListener` JUnit), invisible du consommateur — cf. **D16** (failure) et **D13** (reporting).
 - `WebSync`/`MobileSync` (`api`) étendent `AbstractSyncManager` (`internal`) : dépendance
   `api → internal` **interne au socle**, invisible du consommateur (il ne voit que `WebSync`).
 - Le périmètre `api` = exactement ce que japicmp surveillera (étape 10).

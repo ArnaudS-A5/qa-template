@@ -147,8 +147,9 @@ API autour d'`AbstractSyncManager`, l'arbitrage technique Logback `compile`/`run
 
 - [x] **Factory publique `data`** : `DataFiles` existe comme coquille (`api.data`) et porte le point
       d'accès prévu vers `ExcelFileReaderWriter` / `CsvFileReaderWriter`.
-- [ ] **Factories publiques `secret` / `reporting`** — à confirmer/créer si elles sont nécessaires pour
-      masquer les impls `internal` (cf. D15).
+- [x] **Factories publiques `secret` / `reporting`** — **tranché (D15)** : `secret` → factory
+      **`SecretManagers`** créée (`api.secret`, `get()` neutre renvoyant le `SecretManager`, cache CyberArk) ;
+      `reporting` → **pas de factory** (reporting **AUTO**, tout le domaine passe `internal`, cf. D13).
 - [x] `WebSync` (+ `AbstractSyncManager` / `MobileSync`) — signatures de synchro/interaction.
 - [x] `DataFileManager` (+ `AbstractDataFileManager` / `ExcelFileReaderWriter` / `CsvFileReaderWriter`) —
       signatures lecture/écriture data posées, corps volontairement en coquille.
@@ -179,9 +180,9 @@ API autour d'`AbstractSyncManager`, l'arbitrage technique Logback `compile`/`run
 - [x] `SecretManager` (+ `CyberArkApiClient`) — signatures de récupération de secrets posées.
 - [x] `Secret` — contrat public de **valeur sensible** posé (`of`, `value`, `masked`,
       `sha256Prefix`, `toString`) ; implémentation du masquage en étape 7/8.
-- [x] `ReportingManager` (+ `AlmApiClient`) — signatures de publication arrêtées : `publishStart(String almTestId)`
-      + `publishEnd(TestExecutionResult)` ; `ExecutionStatus` + `TestExecutionResult` créés en `api.reporting`
-      (cf. D13 mis à jour).
+- [x] `ReportingManager` (+ `AlmApiClient`, `ExecutionStatus`, `TestExecutionResult`) — signatures
+      arrêtées : `publishStart(String almTestId)` + `publishEnd(TestExecutionResult)`. **Reporting AUTO**
+      (listener du socle) → **tout le domaine en `internal.reporting`**, aucun type public (cf. D13/D15).
 - [x] **Frontière API `sync`** — **tranché (option A, cf. D15)** : `AbstractSyncManager` reste
       `internal`, mais ses méthodes publiques (héritées par `WebSync`/`MobileSync`) sont **gelées** →
       garde-fou japicmp **élargi** à l'étape 10. Façades **sous-classables / méthodes non-`final`** →
@@ -227,8 +228,9 @@ les tests ne sont pas faits.
 - [ ] **Garde-fous ArchUnit (D19/α)** dans `qa-socle` + config Surefire `dependenciesToScan` dans le
       Parent POM (héritée par les consommateurs) : (1) « pas de champ `static` non-`final` » ;
       (2) **interdiction de dépendre de `ch.qos.logback..` hors `internal.log`** (cf. D16-bis).
-- [ ] `CyberArkApiClient` + tests.
-- [ ] `AlmApiClient` + tests.
+- [ ] `CyberArkApiClient` + tests ; **factory `SecretManagers.get()`** branchée sur l'impl.
+- [ ] `AlmApiClient` + tests ; **listener reporting AUTO** (`TestExecutionListener` lisant `@WithTag`
+      → `publishStart`/`publishEnd`, 1er tag si plusieurs, non remonté si aucun).
 
 > **Mobile différé (hors périmètre étape 8)** — `MobileSync` n'est **pas** implémenté ici : on ne se
 > fait pas ralentir par un pilote mobile inexistant. Ses **signatures sont déjà gelées** (étape 6) et sa

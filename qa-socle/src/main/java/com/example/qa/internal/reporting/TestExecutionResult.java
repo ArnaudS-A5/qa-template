@@ -1,11 +1,11 @@
-package com.example.qa.api.reporting;
+package com.example.qa.internal.reporting;
 
 /**
  * Résultat neutre d'exécution d'un cas de test, transmis à {@link ReportingManager#publishEnd}.
  *
- * <p>Type valeur immuable. Conçu extensible : des champs complémentaires (durée, message
- * d'erreur…) seront ajoutés avant le gel de l'API sans rompre la signature de
- * {@link ReportingManager#publishEnd}.
+ * <p>Type valeur immuable, <b>interne</b> (construit par le listener du socle, jamais par le
+ * consommateur — reporting AUTO, D13). Conçu extensible : des champs complémentaires (durée, message
+ * d'erreur…) peuvent être ajoutés sans rompre {@link ReportingManager#publishEnd}.
  *
  * <p>Squelette — corps réel à fournir (étape 8).
  */

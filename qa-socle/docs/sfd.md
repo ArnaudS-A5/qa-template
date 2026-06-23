@@ -169,7 +169,7 @@ D12, D15, D18, D19.
 
 | ID | Besoin fonctionnel |
 |---|---|
-| **BF-SEC-01** | Le socle **doit** exposer une interface neutre `SecretManager` comme **seule** dépendance des appelants, sans aucun type spécifique au fournisseur. |
+| **BF-SEC-01** | Le socle **doit** exposer une interface neutre `SecretManager` (sans type fournisseur) **et** une factory publique **`SecretManagers`** (`api.secret`) seule porte d'accès : `SecretManagers.get()` (méthode **neutre**, tenue une fois) renvoie le `SecretManager`, cachant `CyberArkApiClient` (`internal`). |
 | **BF-SEC-02** | `SecretManager` **doit** offrir `Secret getSecret(String name)` (nom logique, cas courant) et `Secret getSecret(String safe, String object)` (cas multi-coffre piloté depuis le code). |
 | **BF-SEC-03** | Toute récupération **doit** retourner un `Secret` (jamais un `String` nu), afin que la valeur soit **masquée par défaut** partout (cf. domaine MASK). |
 | **BF-SEC-04** | Les **coordonnées d'infrastructure** du fournisseur (CyberArk AppID/Safe/Folder) **doivent** provenir de la **configuration** (`serenity.conf`, D19), résolues par l'implémentation ; le code de test ne fournit que ce qui **identifie** le secret. |
@@ -214,13 +214,13 @@ dans `ERROR.log`, `FAIL.log`, le dump HTML et la sortie console, y compris en ca
 ### 3.5 Domaine REPORTING — Remontée des résultats dans ALM
 
 **Objectif** : publier l'avancement et le résultat des cas de test dans l'outil de gestion de tests
-(ALM OpenText/HP), derrière un contrat neutre. **Composants** : `ReportingManager`, `TestExecutionResult`,
-`ExecutionStatus` (`api.reporting`) ; `AlmApiClient` (`internal.reporting`). **Réf.** : D13, D15, D19.
+(ALM OpenText/HP), **automatiquement** (reporting AUTO). **Composants** (tous **`internal.reporting`**) :
+`ReportingManager`, `TestExecutionResult`, `ExecutionStatus`, `AlmApiClient`. **Réf.** : D13, D15, D19.
 
 | ID | Besoin fonctionnel |
 |---|---|
-| **BF-REP-01** | Le socle **doit** exposer une interface neutre `ReportingManager` comme seule dépendance des appelants ; changer d'outil de reporting = nouvelle impl, zéro changement appelant. |
-| **BF-REP-02** | Le cycle de publication **doit** comporter **deux appels par test** : `publishStart(String almTestId)` en début (statut « In Progress ») et `publishEnd(TestExecutionResult)` en fin (statut final), **quel que soit** le résultat. |
+| **BF-REP-01** | Le reporting **doit** être **AUTO** : un **listener interne** du socle (comme la capture d'échec) publie pour **chaque** test. Le consommateur **ne référence aucun type reporting** (tout `internal`) — il pose `@WithTag("alm.testId:…")` + configure `qa.alm.*`. `ReportingManager` (interne) reste le **seam de swap** (ALM → autre = nouvelle impl). |
+| **BF-REP-02** | Le cycle **doit** comporter **deux appels par test, émis par le listener** : `publishStart(String almTestId)` en début (« In Progress ») et `publishEnd(TestExecutionResult)` en fin (statut final). Résolution `@WithTag` : **aucun** tag `alm.testId` → **non remonté** (opt-out silencieux) ; **plusieurs** → le **premier**. |
 | **BF-REP-03** | `TestExecutionResult` **doit** être un objet valeur neutre immuable (`almTestId` + `status`), **extensible** (durée, message d'erreur…) sans rompre la signature de `publishEnd`. |
 | **BF-REP-04** | `ExecutionStatus` **doit** énumérer `IN_PROGRESS`, `PASSED`, `FAILED`. |
 | **BF-REP-05** | La résolution de l'identifiant ALM **doit** être **interne** à `AlmApiClient` : le code de test ne manipule **jamais** de coordonnées ALM brutes. |
@@ -230,8 +230,9 @@ dans `ERROR.log`, `FAIL.log`, le dump HTML et la sortie console, y compris en ca
 | **BF-REP-09** | La remontée **doit** être désactivable par `qa.reporting.enabled` (défaut `true`) sans toucher au code. |
 | **BF-REP-10** | Chaque appel **doit** être **stateless** : ouverture/fermeture de sa propre session ALM, aucune session partagée entre threads (sûreté en parallèle Serenity). |
 
-**⚠️ Points ouverts** : version ALM cible (~18.4 à confirmer avant impl) ; format du fichier de mapping
-(à figer étape 8) ; factory publique `reporting` à confirmer (D15).
+**Tranché** : reporting **AUTO** → **pas de factory**, domaine **`internal`** (D13/D15).
+**⚠️ Points ouverts (externes)** : version ALM cible (~18.4 à confirmer avant impl) ; format du fichier
+de mapping (à figer étape 8).
 
 ---
 
@@ -375,9 +376,9 @@ non-régression **bloque** la release (gate, lié à la CI Jenkins D7).
 |---|---|---|---|---|---|
 | SYNC | BF-SYNC-01…15 | `WebSync`, `MobileSync`, `AbstractSyncManager`, `SwipeDirection` | D3, D4 | 6 → 8 | ✅ figées |
 | DATA | BF-DATA-01…09 | `DataFileManager`, `DataFiles`, `Abstract…`, `Excel`/`Csv…` | D5 | 6 → 8 | ✅ figées |
-| SECRET | BF-SEC-01…06 | `SecretManager`, `CyberArkApiClient` | D12 | 6 → 8 | ✅ figées |
+| SECRET | BF-SEC-01…06 | `SecretManager`, **`SecretManagers`** (factory), `CyberArkApiClient` | D12 | 6 → 8 | ✅ figées + factory |
 | MASK | BF-MASK-01…06 | `Secret` (+ `TestFailureManager`) | D12, D14, D16-bis | 6/7 → 8 | ✅ signatures + format acté (D12) |
-| REPORTING | BF-REP-01…10 | `ReportingManager`, `TestExecutionResult`, `ExecutionStatus`, `AlmApiClient` | D13 | 6 → 8 | ✅ figées |
+| REPORTING | BF-REP-01…10 | `ReportingManager`, `TestExecutionResult`, `ExecutionStatus`, `AlmApiClient` (tous **`internal`**) | D13 | 6 → 8 | ✅ figées + **AUTO/internal** (pas de factory) |
 | FAIL | BF-FAIL-01…07 | `TestFailureManager` | D8, D16, D16-bis | 6 → 8 | ✅ hook + clés + contrat de sortie gravé (impl étape 8) |
 | LOG | BF-LOG-01…05 | `LogbackConfigurator` | D14, D16-bis, D17 | 6 → 8 | ✅ constantes + scope tranché (`compile` + ArchUnit) |
 | ERR | BF-ERR-01…07 | `QaToolkitException` + 4 sous-types | D18 | 3 (✅) | ✅ figées (sans `throws`) |
@@ -389,7 +390,6 @@ non-régression **bloque** la release (gate, lié à la CI Jenkins D7).
 
 ## 7. Points ouverts consolidés (à clore avant gel / implémentation)
 
-1. **Factories `secret`/`reporting`** (BF-SEC, BF-REP) — confirmer ou écarter.
-2. **Gouvernance versioning** (BF-VER) — N de dépréciation, critère de publication, gate de release.
-3. **Confirmations externes** — précédence config Serenity 4.2.22, version ALM (~18.4), format du
+1. **Gouvernance versioning** (BF-VER) — N de dépréciation, critère de publication, gate de release.
+2. **Confirmations externes** — précédence config Serenity 4.2.22, version ALM (~18.4), format du
    fichier de mapping ALM.

@@ -1,8 +1,5 @@
 package com.example.qa.internal.reporting;
 
-import com.example.qa.api.reporting.ReportingManager;
-import com.example.qa.api.reporting.TestExecutionResult;
-
 /**
  * Remontée des résultats d'exécution vers ALM (OpenText/HP ALM) via son API REST
  * (version ~18.4 à confirmer avant implémentation).

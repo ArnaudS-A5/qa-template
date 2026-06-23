@@ -2,8 +2,6 @@ package com.example.qa.internal.reporting;
 
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
-import com.example.qa.api.reporting.ReportingManager;
-
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

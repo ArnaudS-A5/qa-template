@@ -1,4 +1,4 @@
-package com.example.qa.api.reporting;
+package com.example.qa.internal.reporting;
 
 /**
  * Statut d'exécution d'un cas de test tel que remontré dans l'outil de gestion de tests.
