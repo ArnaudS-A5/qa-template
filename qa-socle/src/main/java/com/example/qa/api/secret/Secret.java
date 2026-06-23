@@ -5,7 +5,8 @@ package com.example.qa.api.secret;
  *
  * <p><b>Principe — prévention à la source</b> (contrat « valeur sensible » de D12, étape 7) : la
  * valeur en clair n'est accessible que via {@link #value()}, appelé <b>explicitement</b> (typiquement
- * par {@code WebSync.type(By, Secret)} pour remplir un champ). Partout ailleurs — logs, {@code TestStep}
+ * par {@code type(By, Secret)} — commun à {@code WebSync}/{@code MobileSync} — pour remplir un champ).
+ * Partout ailleurs — logs, {@code TestStep}
  * Serenity, dumps, concaténation accidentelle — c'est le rendu <b>masqué</b> qui apparaît, car
  * {@link #toString()} ne révèle jamais le clair. Un secret loggué par erreur ne fuit donc pas.
  *

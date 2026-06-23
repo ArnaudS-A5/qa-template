@@ -9,7 +9,8 @@ package com.example.qa.api.secret;
  *
  * <p><b>Retourne un {@link Secret}</b> (et non un {@code String} nu) : la valeur est ainsi <b>masquée
  * par défaut</b> partout (logs, {@code TestStep}, dumps), et n'est déballée en clair que par un appel
- * explicite à {@code Secret.value()} — typiquement par {@code WebSync.type(By, Secret)} pour remplir
+ * explicite à {@code Secret.value()} — typiquement par {@code type(By, Secret)} (commun
+ * {@code WebSync}/{@code MobileSync}) pour remplir
  * un champ. C'est la <b>prévention à la source</b> du masquage (étape 7).
  *
  * <p><b>Désignation du secret</b> : les <b>coordonnées d'infrastructure</b> du fournisseur (ex. CyberArk
