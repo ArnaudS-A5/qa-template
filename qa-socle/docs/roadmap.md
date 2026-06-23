@@ -157,11 +157,11 @@ API autour d'`AbstractSyncManager`, l'arbitrage technique Logback `compile`/`run
       **namespace stable `"qa"`** (cf. D17/D14 corrigé). Masquage assuré par le type `Secret`.
 - [x] **Log live (default socle)** — coquille de **`LogbackConfigurator`** (`internal.log`) existante,
       avec namespace `"qa"` + clé `qa.logger.level`.
-- [ ] **Arbitrage Logback avant implémentation** — `LogbackConfigurator` doit implémenter l'interface
-      Logback `ch.qos.logback.classic.spi.Configurator`, alors que `logback-classic` est aujourd'hui
-      en scope `runtime` : décider comment compiler le configurator sans exposer inutilement Logback
-      aux consommateurs (cf. **D16-bis**). Les resources `logback-socle.xml` +
-      `META-INF/services/ch.qos.logback.classic.spi.Configurator` seront créées à l'étape 8.
+- [x] **Arbitrage Logback** — **tranché (cf. D16-bis)** : `logback-classic` passe en scope **`compile`**
+      (pour que `LogbackConfigurator` implémente `ch.qos.logback.classic.spi.Configurator`), et le couplage
+      au binding côté consommateur est interdit par une **règle ArchUnit** (D19/α : pas de dépendance à
+      `ch.qos.logback..` hors `internal.log`) plutôt que par l'isolation de scope. Application étape 8
+      (scope + `Configurator` + resources `logback-socle.xml` / `META-INF/services/...` + règle ArchUnit).
 - [ ] `TestFailureManager` — capture d'échec (**classe simple**, D5 ; cf. **D16** + **D16-bis**) :
   - [x] activation **native** via ServiceLoader **JUnit** : `TestFailureManager` implémente lui-même
         `TestExecutionListener` (hook + écriture en une classe simple), déclaré dans
@@ -219,11 +219,13 @@ les tests ne sont pas faits.
 - [ ] `WebSync` (cœur : fluentWait + flag JS) + tests comportementaux.
 - [ ] `DataFileManager` (Excel/CSV) + tests.
 - [ ] `TestFailureManager` (depuis le `TestOutcome` Serenity) + tests.
-- [ ] `LogbackConfigurator` (`internal.log`) + resources `logback-socle.xml` /
+- [ ] `LogbackConfigurator` (`internal.log`) implémente `Configurator` + **passer `logback-classic` en
+      scope `compile`** (cf. D16-bis) + resources `logback-socle.xml` /
       `META-INF/services/ch.qos.logback.classic.spi.Configurator` (default socle) + test :
       default appliqué sans `logback.xml` local, surcharge locale prioritaire.
-- [ ] **Garde-fou thread-safety (D19/α)** : règle ArchUnit (« pas de `static` non-`final` ») dans
-      `qa-socle` + config Surefire `dependenciesToScan` dans le Parent POM (héritée par les consommateurs).
+- [ ] **Garde-fous ArchUnit (D19/α)** dans `qa-socle` + config Surefire `dependenciesToScan` dans le
+      Parent POM (héritée par les consommateurs) : (1) « pas de champ `static` non-`final` » ;
+      (2) **interdiction de dépendre de `ch.qos.logback..` hors `internal.log`** (cf. D16-bis).
 - [ ] `CyberArkApiClient` + tests.
 - [ ] `AlmApiClient` + tests.
 

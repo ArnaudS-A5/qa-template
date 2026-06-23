@@ -539,14 +539,24 @@ Si un projet doit rester sur une ancienne version du socle : simple non-merge de
 
 ### Correction des scopes
 
-- **Parent POM (dependencyManagement)** : `logback-classic` en `<scope>runtime</scope>`.
 - **qa-socle** : déclare `slf4j-api` en `compile` (le contrat SLF4J, transmis aux consommateurs) et
-  `logback-classic` en `runtime` (le binding, pour l'exécution, pas polluant la compilation).
+  `logback-classic` en **`compile`** (le binding, transmis aux consommateurs aux runtime **et** compile).
 - **Enforcer** (D6-bis) : banni les bindings concurrent (slf4j-simple, log4j-slf4j) → un seul Logback.
 
-**Effet** : uniformité du moteur (tous reçoivent Logback au runtime) sans imposer la compilation,
-pas de conflit avec d'autres bindings, libraire n'impose rien au consommateur côté dépendances
-de compilation.
+> **Évolution (étape 6) — de `runtime` à `compile` + garde-fou ArchUnit.** `logback-classic` était
+> initialement en `runtime` pour ne **pas** exposer le binding au **compile** des consommateurs (qui ne
+> doivent dépendre que de SLF4J). Mais `LogbackConfigurator` (livré par le socle, cf. plus bas) **doit
+> implémenter** le type Logback `ch.qos.logback.classic.spi.Configurator` → le socle a besoin de Logback
+> **au compile**, ce que `runtime` interdit. **Choix retenu : `compile`** (POM simple, 1 ligne). La règle
+> « ne pas coder contre le binding » n'est plus assurée par l'**absence** de Logback au compile, mais par
+> une **règle ArchUnit** (cf. **D19/α**) : *aucune classe hors `internal.log` ne dépend de
+> `ch.qos.logback..`* → **échoue le build** en cas de violation. Garde-fou **plus robuste** (il attrape
+> l'usage quelle que soit la façon dont Logback arrive au classpath) et **POM plus simple** que l'option
+> `provided` + Parent. Application : étape 8 (avec l'implémentation du `Configurator`).
+
+**Effet** : uniformité du moteur (tous reçoivent Logback au runtime), le `Configurator` compile, et le
+couplage au binding reste **interdit côté consommateur** — non plus par scope mais par règle ArchUnit
+vérifiée au build.
 
 ### Hiérarchie des responsabilités (révision)
 
@@ -737,6 +747,10 @@ du fichier** (peu importe lequel le consommateur utilise).
 
 - Règle **ArchUnit** (« pas de champ `static` non-`final` ») à **intégrer au jar `qa-socle`** (ArchUnit en
   scope `compile`, **cohérent avec JUnit déjà en `compile`** → **un seul artefact**, pas de 2ᵉ jar).
+- Règle **ArchUnit complémentaire — interdiction de coder contre le binding Logback** (cf. **D16-bis**) :
+  *aucune classe hors `com.example.qa.internal.log` ne doit dépendre de `ch.qos.logback..`* — le
+  consommateur passe par **SLF4J**, jamais par Logback directement. Échoue le build en cas de violation.
+  Remplace l'isolation par scope (Logback est en `compile`) par un garde-fou explicite, plus robuste.
 - À appliquer aux tests du socle **et à imposer aux 17 consommateurs** via le **Parent POM** (`<build>
   <plugins>` actif, hérité) : Surefire **`dependenciesToScan`** sur `qa-socle` + system property
   **`qa.archunit.basePackage=${project.groupId}`**.

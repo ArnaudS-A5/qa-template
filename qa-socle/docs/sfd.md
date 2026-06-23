@@ -350,7 +350,7 @@ non-régression **bloque** la release (gate, lié à la CI Jenkins D7).
 | ID | Exigence | Réf. |
 |---|---|---|
 | **ENF-01 — Thread-safety** | Aucun `static` mutable partagé (`static` ⇒ `final` + immuable/thread-safe/`ThreadLocal`) ; confinement du driver au thread courant ; chemins d'artefacts uniques. Portées par composant : `WebSync`/`MobileSync` par instance (driver du thread) ; `DataFileManager` par usage ; `SecretManager`/`ReportingManager` singleton stateless ; `TestFailureManager` sans état. | D19 |
-| **ENF-02 — Garde-fou thread-safety** | Règle **ArchUnit** « pas de champ `static` non-`final` » embarquée dans le jar `qa-socle`, imposée aux 17 consommateurs via Surefire `dependenciesToScan` + `qa.archunit.basePackage` dans le Parent POM. | D19 (option α) |
+| **ENF-02 — Garde-fous ArchUnit** | Règles **ArchUnit** embarquées dans le jar `qa-socle`, imposées aux 17 consommateurs via Surefire `dependenciesToScan` + `qa.archunit.basePackage` (Parent POM) : (1) « pas de champ `static` non-`final` » ; (2) **pas de dépendance à `ch.qos.logback..` hors `internal.log`** (le consommateur passe par SLF4J, pas par le binding). | D19 (option α), D16-bis |
 | **ENF-03 — Neutralité de l'adoption** | Le base package `com.example.qa` et le `groupId` sont des **placeholders** personnalisés à l'adoption (1 refactor IDE + 2 `<groupId>`) ; les configs runtime (`"qa"`, `serenity.conf`) sont **package-agnostiques** et ne changent pas à l'adoption. | D17 |
 | **ENF-04 — Compatibilité CI** | Le socle et ses conventions restent compatibles avec la config Jenkins (autre équipe) ; en cas de divergence, compromis. | D7 |
 | **ENF-05 — Robustesse synchro** | Le polling `fluentWait` (~250 ms, timeout configurable) absorbe les exceptions transitoires sans faire échouer prématurément le test. | D3 |
@@ -379,7 +379,7 @@ non-régression **bloque** la release (gate, lié à la CI Jenkins D7).
 | MASK | BF-MASK-01…06 | `Secret` (+ `TestFailureManager`) | D12, D14, D16-bis | 6/7 → 8 | ✅ signatures + format acté (D12) |
 | REPORTING | BF-REP-01…10 | `ReportingManager`, `TestExecutionResult`, `ExecutionStatus`, `AlmApiClient` | D13 | 6 → 8 | ✅ figées |
 | FAIL | BF-FAIL-01…07 | `TestFailureManager` | D8, D16, D16-bis | 6 → 8 | ⚠️ à cadrer |
-| LOG | BF-LOG-01…05 | `LogbackConfigurator` | D14, D16-bis, D17 | 6 → 8 | ✅ constantes / ⚠️ arbitrage scope |
+| LOG | BF-LOG-01…05 | `LogbackConfigurator` | D14, D16-bis, D17 | 6 → 8 | ✅ constantes + scope tranché (`compile` + ArchUnit) |
 | ERR | BF-ERR-01…07 | `QaToolkitException` + 4 sous-types | D18 | 3 (✅) | ✅ figées (sans `throws`) |
 | CONF | BF-CONF-01…04 | (transverse, Serenity) | D19 | 4 (✅) → 8 | n/a |
 | VER | BF-VER-01…08 | `qa-parent`, Wrapper, Enforcer | D6, D6-bis, D7 | 2, 10 | 🟡 partiel |
@@ -389,10 +389,9 @@ non-régression **bloque** la release (gate, lié à la CI Jenkins D7).
 
 ## 7. Points ouverts consolidés (à clore avant gel / implémentation)
 
-1. **Arbitrage scope Logback** (BF-LOG) — `compile` vs `runtime` pour le `Configurator`.
-2. **Contrat de sortie `failure`** (BF-FAIL-06) — graver le format `KO__` comme contrat versionné
+1. **Contrat de sortie `failure`** (BF-FAIL-06) — graver le format `KO__` comme contrat versionné
    (les clés `qa.failure.artefacts.*` sont, elles, déjà figées).
-3. **Factories `secret`/`reporting`** (BF-SEC, BF-REP) — confirmer ou écarter.
-4. **Gouvernance versioning** (BF-VER) — N de dépréciation, critère de publication, gate de release.
-5. **Confirmations externes** — précédence config Serenity 4.2.22, version ALM (~18.4), format du
+2. **Factories `secret`/`reporting`** (BF-SEC, BF-REP) — confirmer ou écarter.
+3. **Gouvernance versioning** (BF-VER) — N de dépréciation, critère de publication, gate de release.
+4. **Confirmations externes** — précédence config Serenity 4.2.22, version ALM (~18.4), format du
    fichier de mapping ALM.
