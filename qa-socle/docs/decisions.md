@@ -139,8 +139,19 @@ Le socle et les conventions doivent rester **compatibles** avec leur configurati
 
 Voir [README](../../README.md#convention-de-nommage-des-résultats-de-tests).
 Rappel du contrat : dossier `KO__{ENV}__{NomDuTest}__{ts}/` créé **uniquement** pour un test KO,
-contenant **toujours** `ERROR_*.log` (synthétique) + `FAIL_*.log` (trace complète) + dump HTML
+contenant **toujours** `ERROR.log` (synthétique) + `FAIL.log` (trace complète) + dump HTML
 de la step en erreur. Aucun artefact pour un test OK.
+
+**Gravé comme contrat de sortie versionné (étape 6)** : modifier ce format (nom de dossier ou des 3
+fichiers) est un **breaking change** SemVer, traité comme l'API publique vis-à-vis du garde-fou (D16,
+étape 10) — `qa-maintenance` (D9) et la collecte CI en dépendent. Précisions actées :
+- **Noms de fichiers simplifiés** : `ERROR.log` / `FAIL.log` (sans répéter `ENV`/timestamp, déjà portés
+  par le dossier) ; le HTML porte le nom de la step en erreur.
+- **Délimiteur `__`** (double) entre les champs du dossier : volontaire — les champs contiennent des `_`
+  (noms de méthodes de test ; timestamp `yyyy-MM-dd_HH-mm-ss`), un simple `_` rendrait le parsing ambigu.
+- **Répertoire** réglable par `qa.failure.artefacts.outputDir` (cf. D16) ; défaut `target/qa-results`
+  (sous `target/` → supprimé par `mvn clean` ; le pointer ailleurs pour persister).
+- *Étape 8* : sanitization du nom de step pour un nom de fichier `.html` valide.
 
 ## D9 — Auto-correction : agent autonome `qa-maintenance`
 
@@ -751,6 +762,11 @@ du fichier** (peu importe lequel le consommateur utilise).
   *aucune classe hors `com.example.qa.internal.log` ne doit dépendre de `ch.qos.logback..`* — le
   consommateur passe par **SLF4J**, jamais par Logback directement. Échoue le build en cas de violation.
   Remplace l'isolation par scope (Logback est en `compile`) par un garde-fou explicite, plus robuste.
+- **NB (à spécifier étape 8) — clé d'activation par règle** : chaque règle ArchUnit doit exposer **sa
+  propre clé de config** (défaut `true`), permettant à un projet de **désactiver une règle en urgence**
+  sans changer de version du socle (échappatoire de débogage). Risque **assumé** car **visible** : un
+  scan des clés d'un projet révèle immédiatement les règles bypassées (à remettre en ordre). Plus souple
+  qu'un blocage dur. *(Noté ; non implémenté à ce stade.)*
 - À appliquer aux tests du socle **et à imposer aux 17 consommateurs** via le **Parent POM** (`<build>
   <plugins>` actif, hérité) : Surefire **`dependenciesToScan`** sur `qa-socle` + system property
   **`qa.archunit.basePackage=${project.groupId}`**.

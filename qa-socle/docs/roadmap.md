@@ -167,14 +167,15 @@ API autour d'`AbstractSyncManager`, l'arbitrage technique Logback `compile`/`run
         `TestExecutionListener` (hook + écriture en une classe simple), déclaré dans
         `META-INF/services/...` — **aucun type public, aucune annotation**. D16 corrigée (Serenity ne
         découvre pas les `StepListener` par ServiceLoader).
-  - [ ] **écrire les 3 fichiers en Java** (`ERROR_`/`FAIL_` + dump HTML) depuis le **`TestOutcome`
+  - [ ] **écrire les 3 fichiers en Java** (`ERROR.log`/`FAIL.log` + dump HTML) depuis le **`TestOutcome`
         Serenity** (`getTestSteps()` + `TestStep.getException()`), en appliquant le masquage des
         valeurs sensibles — format/nommage identiques sur les 17 projets (cf. **D16-bis**) ; **Logback**
         ne gère que le *log live*, **Surefire** l'exécution/répertoire ;
   - [x] **clés de config figées** (constantes `TestFailureManager`, défauts inclus), unifiées sous
         `qa.failure.artefacts.*` : `.enabled` (opt-out), `.outputDir`, `.dumpHtml`. Le `{ENV}` du
         nommage `KO__` est lu de l'environnement Serenity actif (`environment`, D19) — pas de clé dédiée ;
-  - [ ] graver le **contrat de sortie** (`KO__...` + 3 fichiers, cf. D8) comme contrat versionné.
+  - [x] **contrat de sortie gravé** (versionné, cf. D8) : `KO__{ENV}__{NomDuTest}__{ts}/` (délimiteur
+        `__`) + `ERROR.log` / `FAIL.log` / dump HTML. Modifier le format = breaking change.
 - [x] `SecretManager` (+ `CyberArkApiClient`) — signatures de récupération de secrets posées.
 - [x] `Secret` — contrat public de **valeur sensible** posé (`of`, `value`, `masked`,
       `sha256Prefix`, `toString`) ; implémentation du masquage en étape 7/8.

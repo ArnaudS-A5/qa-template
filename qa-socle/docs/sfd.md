@@ -207,7 +207,7 @@ Révéler 2 caractères est un **compromis de sécurité assumé** (risque connu
 jugé acceptable ; la comparaison stricte passe par le préfixe SHA-256).
 
 **Critères d'acceptation** (étape 7/8) : test prouvant l'absence de toute occurrence en clair du secret
-dans `ERROR_*.log`, `FAIL_*.log`, le dump HTML et la sortie console, y compris en cas de log accidentel.
+dans `ERROR.log`, `FAIL.log`, le dump HTML et la sortie console, y compris en cas de log accidentel.
 
 ---
 
@@ -243,12 +243,12 @@ dans `ERROR_*.log`, `FAIL_*.log`, le dump HTML et la sortie console, y compris e
 
 | ID | Besoin fonctionnel |
 |---|---|
-| **BF-FAIL-01** | Pour un test **KO uniquement**, le socle **doit** créer un dossier `KO__{ENV}__{NomDuTest}__{ts}/` contenant **toujours** trois fichiers : `ERROR_*.log` (synthétique), `FAIL_*.log` (trace complète) et un **dump HTML** de la step en erreur. **Aucun artefact** pour un test OK. |
+| **BF-FAIL-01** | Pour un test **KO uniquement**, le socle **doit** créer un dossier `KO__{ENV}__{NomDuTest}__{ts}/` (délimiteur `__`) contenant **toujours** trois fichiers : `ERROR.log` (synthétique), `FAIL.log` (trace complète) et un **dump HTML** de la step en erreur. **Aucun artefact** pour un test OK. |
 | **BF-FAIL-02** | Le mécanisme **doit** s'activer **nativement** par la seule présence du jar, via le **ServiceLoader de JUnit Platform** : `TestFailureManager` (`internal.failure`) implémente lui-même `TestExecutionListener`, déclaré dans `META-INF/services/org.junit.platform.launcher.TestExecutionListener`, auto-enregistré par le `Launcher` que Surefire lance. **Aucun type public, aucune annotation, aucun import** côté consommateur. *(Serenity ne découvre pas les `StepListener` par ServiceLoader — cf. D16 corrigée.)* |
 | **BF-FAIL-03** | L'option « annotation » (ex. `@ExtendWith(...)`) est **explicitement rejetée** : une annotation oubliée produirait une absence silencieuse d'artefacts. L'opt-out **doit** se faire par configuration, pas par omission de code. |
 | **BF-FAIL-04** | Les contenus **doivent** être bâtis **en Java** à partir du `TestOutcome` Serenity (`getTestSteps()` + `TestStep.getException()`/`getErrorMessage()`), **sans buffer maison**, en appliquant le **masquage** (BF-MASK-05). |
 | **BF-FAIL-05** | Le mécanisme **doit** être paramétrable par clés de config **toutes dotées d'une valeur par défaut** (figées en constantes `TestFailureManager`), unifiées sous `qa.failure.artefacts.*` : `.enabled` (`true`, opt-out), `.outputDir` (`target/qa-results`), `.dumpHtml` (`true`). Le `{ENV}` du nommage `KO__` **n'est pas une clé du socle** : il est lu de l'**environnement Serenity actif** (propriété `environment`, D19) — source unique. |
-| **BF-FAIL-06** | Le **format de sortie** (emplacement, nommage `KO__…`, trois fichiers, séparation `ERROR_`/`FAIL_`) constitue un **contrat versionné** : son implémentation interne peut changer librement, mais **changer le format est un breaking change** (SemVer). |
+| **BF-FAIL-06** | Le **format de sortie** (emplacement, nommage `KO__…` à délimiteur `__`, trois fichiers `ERROR.log`/`FAIL.log`/dump HTML) est un **contrat versionné gravé** (D8) : l'implémentation interne peut changer librement, mais **changer le format est un breaking change** (SemVer). |
 | **BF-FAIL-07** | La répartition des responsabilités **doit** être respectée : **Surefire** = exécution/répertoire/parallélisme ; **Serenity** = historique des steps ; **Logback** = log live ; **`TestFailureManager`** = détection KO + collecte + dump HTML + nommage + écriture des 3 fichiers + masquage. |
 
 **Critères d'acceptation** (étape 8) : un test KO produit exactement les 3 fichiers au bon emplacement,
@@ -378,7 +378,7 @@ non-régression **bloque** la release (gate, lié à la CI Jenkins D7).
 | SECRET | BF-SEC-01…06 | `SecretManager`, `CyberArkApiClient` | D12 | 6 → 8 | ✅ figées |
 | MASK | BF-MASK-01…06 | `Secret` (+ `TestFailureManager`) | D12, D14, D16-bis | 6/7 → 8 | ✅ signatures + format acté (D12) |
 | REPORTING | BF-REP-01…10 | `ReportingManager`, `TestExecutionResult`, `ExecutionStatus`, `AlmApiClient` | D13 | 6 → 8 | ✅ figées |
-| FAIL | BF-FAIL-01…07 | `TestFailureManager` | D8, D16, D16-bis | 6 → 8 | ⚠️ à cadrer |
+| FAIL | BF-FAIL-01…07 | `TestFailureManager` | D8, D16, D16-bis | 6 → 8 | ✅ hook + clés + contrat de sortie gravé (impl étape 8) |
 | LOG | BF-LOG-01…05 | `LogbackConfigurator` | D14, D16-bis, D17 | 6 → 8 | ✅ constantes + scope tranché (`compile` + ArchUnit) |
 | ERR | BF-ERR-01…07 | `QaToolkitException` + 4 sous-types | D18 | 3 (✅) | ✅ figées (sans `throws`) |
 | CONF | BF-CONF-01…04 | (transverse, Serenity) | D19 | 4 (✅) → 8 | n/a |
@@ -389,9 +389,7 @@ non-régression **bloque** la release (gate, lié à la CI Jenkins D7).
 
 ## 7. Points ouverts consolidés (à clore avant gel / implémentation)
 
-1. **Contrat de sortie `failure`** (BF-FAIL-06) — graver le format `KO__` comme contrat versionné
-   (les clés `qa.failure.artefacts.*` sont, elles, déjà figées).
-2. **Factories `secret`/`reporting`** (BF-SEC, BF-REP) — confirmer ou écarter.
-3. **Gouvernance versioning** (BF-VER) — N de dépréciation, critère de publication, gate de release.
-4. **Confirmations externes** — précédence config Serenity 4.2.22, version ALM (~18.4), format du
+1. **Factories `secret`/`reporting`** (BF-SEC, BF-REP) — confirmer ou écarter.
+2. **Gouvernance versioning** (BF-VER) — N de dépréciation, critère de publication, gate de release.
+3. **Confirmations externes** — précédence config Serenity 4.2.22, version ALM (~18.4), format du
    fichier de mapping ALM.

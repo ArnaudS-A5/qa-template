@@ -94,17 +94,23 @@ Le contenu réel (signatures puis implémentations) sera intégré selon la
 
 ## Convention de nommage des résultats de tests
 
-Dossier racine : `target/qa-results/`. Un dossier n'est créé **que pour un test KO**
-(aucun artefact si le test est OK) et contient **toujours ces trois fichiers** :
+Dossier racine : `target/qa-results/` (réglable par `qa.failure.artefacts.outputDir` — le pointer **hors
+de `target/`** pour survivre à un `mvn clean`). Un dossier n'est créé **que pour un test KO** (aucun
+artefact si le test est OK) et contient **toujours ces trois fichiers** :
 
 ```
 KO__{ENV}__{NomDuTest}__{yyyy-MM-dd_HH-mm-ss}/
-    ERROR_{ENV}_{timestamp}.log     # erreur synthétique : uniquement la cause directe
-    FAIL_{ENV}_{timestamp}.log      # trace complète : stacktrace + historique de toutes les steps
+    ERROR.log                       # erreur synthétique : uniquement la cause directe
+    FAIL.log                        # trace complète : stacktrace + historique de toutes les steps
     {nomDeLaStepEnErreur}.html      # dump du DOM au moment de l'échec
 ```
 
-- `ENV` en CAPITALES (ex. `RECETTE`, `INTEG`).
+- **Contrat de sortie versionné** : ce format (nom de dossier + 3 fichiers) est figé ; le modifier est un
+  **breaking change** (SemVer), au même titre que l'API publique — `qa-maintenance` et la collecte CI en dépendent.
+- **Délimiteur `__`** (double) entre les champs du dossier : volontaire, car les champs peuvent contenir
+  des `_` (noms de méthodes de test, timestamp `…_HH-mm-ss`) → un simple `_` rendrait le re-découpage ambigu.
+- `ENV` en CAPITALES (ex. `RECETTE`, `INTEG`) ; les noms de fichiers ne répètent **pas** `ENV`/timestamp
+  (déjà portés par le dossier).
 - `NomDuTest` dans le nom du dossier garantit l'unicité en exécution parallèle (un dossier par test KO).
 - Fonctionne en parallèle (local) et en CI (artefacts téléchargeables et traitables localement).
 - Ces dossiers sont la matière première de l'agent de maintenance (`qa-maintenance`).
