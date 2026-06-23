@@ -186,8 +186,8 @@ API autour d'`AbstractSyncManager`, l'arbitrage technique Logback `compile`/`run
       commun reste dans `internal` avec garde-fou compat élargi, s'il est déplacé en `api`, ou si une
       autre forme de façade publique est retenue. Objectif : que le périmètre versionné reflète la
       vraie surface consommable.
-- [ ] **Fixer la date de gel de l'API** une fois toutes les signatures arrêtées — **y compris la
-      signature de masquage de `SecretManager`** (réf. étapes 2 et 7).
+- [ ] **Fixer la date de gel de l'API** une fois toutes les signatures arrêtées — **y compris les
+      signatures de masquage du type `Secret`** (réf. étapes 2 et 7).
 
 ---
 
@@ -195,7 +195,7 @@ API autour d'`AbstractSyncManager`, l'arbitrage technique Logback `compile`/`run
 
 **Objectif** : la **politique** de masquage des secrets (jamais de secret en clair dans logs/dumps),
 son **intégration interne** et ses **tests**. Isolé car risque OWASP. ⚠️ **Aucune nouvelle signature
-publique ici** : la seule signature concernée (contrat « valeur sensible » de `SecretManager`) est
+publique ici** : la seule signature concernée (contrat « valeur sensible » du type `Secret`) est
 figée en **étape 6, avant le gel**.
 
 **Statut : 🟡 En cours** — la politique et les signatures publiques sont cadrées ; l'implémentation et
