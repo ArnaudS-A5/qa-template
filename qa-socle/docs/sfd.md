@@ -1,4 +1,4 @@
-# Spécifications Fonctionnelles Détaillées (SFD) — Socle QA
+tell# Spécifications Fonctionnelles Détaillées (SFD) — Socle QA
 
 > **Statut du document** : version de référence pour la phase de conception (coquilles typées).
 > Décrit les **besoins fonctionnels** du socle tels qu'arrêtés par les décisions d'architecture
@@ -200,12 +200,10 @@ les dumps d'échec ou par concaténation accidentelle. **Risque OWASP** isolé (
 | **BF-MASK-05** | Le masquage **doit** être appliqué **en amont de toute écriture**. `TestFailureManager` **doit** appliquer le masquage **à la sérialisation** des `TestStep` (jamais depuis une sortie SLF4J brute). |
 | **BF-MASK-06** | **Aucun secret en clair** ne **doit** apparaître dans les 3 artefacts `KO__…` ni dans le log live. |
 
-**⚠️ Point ouvert (à acter formellement dans `decisions.md`)** : le **format précis** du rendu masqué.
-Le code de référence ([Secret.java](../src/main/java/com/example/qa/api/secret/Secret.java)) spécifie
-actuellement « **2 premiers caractères en clair + masque fixe + 16 hexa de SHA-256** » (ex.
-`Bo******** (sha256:0a1b2c3d4e5f6a7b)`). Comme (a) c'est un **contrat de sortie versionné** (D16) et
-(b) **révéler 2 caractères d'un secret** est une décision de sécurité, ce format **doit** être validé
-ou révisé et **enregistré comme décision** avant le gel de l'API.
+**Format de masquage (acté, D12)** : « **2 premiers caractères en clair + masque fixe + 16 hexa de
+SHA-256** » (ex. `Bo******** (sha256:0a1b2c3d4e5f6a7b)`). C'est un **contrat de sortie versionné** (D16).
+Révéler 2 caractères est un **compromis de sécurité assumé** (risque connu sur les secrets très courts,
+jugé acceptable ; la comparaison stricte passe par le préfixe SHA-256).
 
 **Critères d'acceptation** (étape 7/8) : test prouvant l'absence de toute occurrence en clair du secret
 dans `ERROR_*.log`, `FAIL_*.log`, le dump HTML et la sortie console, y compris en cas de log accidentel.
@@ -377,7 +375,7 @@ non-régression **bloque** la release (gate, lié à la CI Jenkins D7).
 | SYNC | BF-SYNC-01…15 | `WebSync`, `MobileSync`, `AbstractSyncManager`, `SwipeDirection` | D3, D4 | 6 → 8 | ✅ figées |
 | DATA | BF-DATA-01…09 | `DataFileManager`, `DataFiles`, `Abstract…`, `Excel`/`Csv…` | D5 | 6 → 8 | ✅ figées |
 | SECRET | BF-SEC-01…06 | `SecretManager`, `CyberArkApiClient` | D12 | 6 → 8 | ✅ figées |
-| MASK | BF-MASK-01…06 | `Secret` (+ `TestFailureManager`) | D12, D14, D16-bis | 6/7 → 8 | ✅ signatures / ⚠️ format à acter |
+| MASK | BF-MASK-01…06 | `Secret` (+ `TestFailureManager`) | D12, D14, D16-bis | 6/7 → 8 | ✅ signatures + format acté (D12) |
 | REPORTING | BF-REP-01…10 | `ReportingManager`, `TestExecutionResult`, `ExecutionStatus`, `AlmApiClient` | D13 | 6 → 8 | ✅ figées |
 | FAIL | BF-FAIL-01…07 | `TestFailureManager` | D8, D16, D16-bis | 6 → 8 | ⚠️ à cadrer |
 | LOG | BF-LOG-01…05 | `LogbackConfigurator` | D14, D16-bis, D17 | 6 → 8 | ✅ constantes / ⚠️ arbitrage scope |
@@ -391,11 +389,10 @@ non-régression **bloque** la release (gate, lié à la CI Jenkins D7).
 ## 7. Points ouverts consolidés (à clore avant gel / implémentation)
 
 1. **Frontière API `sync`** (BF-SYNC) — `AbstractSyncManager` `internal` vs surface publique.
-2. **Format de masquage** (BF-MASK-04) — acter « 2 chars + 16 hexa SHA-256 » ou réviser.
-3. **Arbitrage scope Logback** (BF-LOG) — `compile` vs `runtime` pour le `Configurator`.
-4. **Contrat de sortie `failure`** (BF-FAIL-06) — graver le format `KO__` comme contrat versionné
+2. **Arbitrage scope Logback** (BF-LOG) — `compile` vs `runtime` pour le `Configurator`.
+3. **Contrat de sortie `failure`** (BF-FAIL-06) — graver le format `KO__` comme contrat versionné
    (les clés `qa.failure.artefacts.*` sont, elles, déjà figées).
-5. **Factories `secret`/`reporting`** (BF-SEC, BF-REP) — confirmer ou écarter.
-6. **Gouvernance versioning** (BF-VER) — N de dépréciation, critère de publication, gate de release.
-7. **Confirmations externes** — précédence config Serenity 4.2.22, version ALM (~18.4), format du
+4. **Factories `secret`/`reporting`** (BF-SEC, BF-REP) — confirmer ou écarter.
+5. **Gouvernance versioning** (BF-VER) — N de dépréciation, critère de publication, gate de release.
+6. **Confirmations externes** — précédence config Serenity 4.2.22, version ALM (~18.4), format du
    fichier de mapping ALM.

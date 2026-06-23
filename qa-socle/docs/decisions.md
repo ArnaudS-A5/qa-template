@@ -216,6 +216,19 @@ Le Git flow est documenté en Markdown pour être consommable par l'agent.
   `internal.secret`), cf. D15. Le consommateur ne dépend que de `SecretManager`.
 - **Aucune implémentation pour l'instant** (phase backlog / nommage).
 
+### Format de masquage du type `Secret` (acté étape 6 — contrat de sortie versionné)
+
+Le rendu masqué est **figé** ; toute modification ultérieure est un **breaking change** (même statut
+que le contrat de sortie `KO__`, cf. D16) :
+
+- `masked()` / `toString()` → **2 premiers caractères en clair** + masque fixe + **16 hexa (8 octets de
+  tête) du SHA-256** de la valeur. Ex. `Bo******** (sha256:0a1b2c3d4e5f6a7b)`.
+- `sha256Prefix()` → les **16 hexa** seuls — pour **comparer** deux secrets sans les révéler.
+- **Décision de sécurité assumée** : révéler les **2 premiers caractères** est un compromis **accepté**
+  (lisibilité / diagnostic à l'œil dans les logs et dumps). Le risque — fuite partielle sur un secret
+  **très court** — est **connu et jugé acceptable** ; la comparaison stricte passe de toute façon par le
+  préfixe SHA-256, jamais par les caractères visibles. Implémentation du masquage : étape 7/8.
+
 ## D13 — Remontée des résultats dans ALM (à venir)
 
 - **Interface neutre** (même principe que D12) : `interface ReportingManager` — contrat de remontée

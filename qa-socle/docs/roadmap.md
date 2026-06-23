@@ -201,8 +201,8 @@ figée en **étape 6, avant le gel**.
 **Statut : 🟡 En cours** — la politique et les signatures publiques sont cadrées ; l'implémentation et
 les tests ne sont pas faits.
 
-- [x] Définir la **règle de masquage** : quoi masquer, comment (préfixe visible + hash court), à quel
-      moment (en amont de toute écriture) — cadré par `Secret` / D12 / D16-bis.
+- [x] Définir la **règle de masquage** : quoi masquer, comment (**format acté D12** : 2 premiers
+      caractères + masque + 16 hexa SHA-256), à quel moment (en amont de toute écriture) — `Secret` / D12 / D16-bis.
 - [ ] Implémenter le **masquage à la source** dans le type `Secret` (`masked()` / `sha256Prefix()` /
       `toString()`) — **sans changer sa signature publique** (figée en 6).
 - [ ] Intégrer le masquage dans `TestFailureManager` (`internal`, dumps/logs d'échec).

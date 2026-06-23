@@ -12,6 +12,8 @@ package com.example.qa.api.secret;
  * <p><b>Rendu masqué</b> : {@code masked()} combine les <b>2 premiers caractères</b> du clair, un
  * masque fixe, et les <b>16 premiers hexa du SHA-256</b> — assez pour <b>diagnostiquer / comparer</b>
  * deux secrets sans permettre de reconstituer la valeur. Ex. {@code "Bo******** (sha256:0a1b2c3d4e5f6a7b)"}.
+ * Format <b>acté en D12</b> (contrat de sortie versionné) ; révéler 2 caractères est un compromis de
+ * sécurité <b>assumé</b> (le risque sur un secret très court est connu et accepté).
  *
  * <p>Type immuable, {@code final}. Squelette — corps réel à fournir (étape 8).
  */
