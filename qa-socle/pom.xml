@@ -63,11 +63,15 @@
         </dependency>
 
         <!-- Journalisation : API SLF4J (compile, transmise aux consommateurs)
-             + implémentation Logback (runtime, présent au runtime sans polluer compile).
+             + implémentation Logback (runtime aujourd'hui).
              Cf. D16-bis : pas de façade de log maison (QaLogger supprimée) — le log
              d'action passe par SLF4J natif ; l'uniformité vient du default Logback du
-             socle (LogbackConfigurator). Logback reste le binding sans être imposé à
-             la compilation. -->
+             socle (LogbackConfigurator).
+             ⚠️ Étape 8 : Logback passera en scope `compile` (pour que LogbackConfigurator
+             implémente ch.qos.logback.classic.spi.Configurator) ; le couplage au binding côté
+             consommateur sera alors interdit par une règle ArchUnit (aucune dépendance à
+             ch.qos.logback.. hors internal.log), et non plus par l'isolation de scope.
+             Les deux changements forment un duo indissociable (D16-bis / D19-α). -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
