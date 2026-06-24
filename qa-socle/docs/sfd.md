@@ -224,15 +224,16 @@ dans `ERROR.log`, `FAIL.log`, le dump HTML et la sortie console, y compris en ca
 | **BF-REP-03** | `TestExecutionResult` **doit** être un objet valeur neutre immuable (`almTestId` + `status`), **extensible** (durée, message d'erreur…) sans rompre la signature de `publishEnd`. |
 | **BF-REP-04** | `ExecutionStatus` **doit** énumérer `IN_PROGRESS`, `PASSED`, `FAILED`. |
 | **BF-REP-05** | La résolution de l'identifiant ALM **doit** être **interne** à `AlmApiClient` : le code de test ne manipule **jamais** de coordonnées ALM brutes. |
-| **BF-REP-06** | Le mapping test↔ALM **doit** offrir **deux modes alternatifs** (pilotés par config, jamais cumulés) : **mode annotation** (`@WithTag("alm.testId:1042")` lu par réflexion via `TestAnnotations`) et **mode fichier** (mapping externe nom de classe → coordonnées ALM, sans recompilation). |
+| **BF-REP-06** | Le mapping test↔ALM **doit** offrir **deux modes alternatifs** (pilotés par config, jamais cumulés) : **mode annotation** (`@WithTag("alm.testId:1042")` lu par réflexion via `TestAnnotations`) et **mode fichier** (mapping externe **à deux colonnes** : adresse complète du test côté Serenity ↔ adresse complète de l'instance de test côté ALM ; une ligne = une correspondance, sans recompilation). |
 | **BF-REP-07** | Les **coordonnées ALM** **doivent** suivre deux profils config : **défaut** (domain/project/test plan/test set dans `serenity.conf`, test instance ID par test) et **tout fichier** (toutes coordonnées dans le fichier ; clés `qa.alm.*` ignorées). |
 | **BF-REP-08** | L'**authentification** **doit** lire le login via `qa.alm.login` (`serenity.conf`) et récupérer le **mot de passe via `SecretManager`** (CyberArk) — **jamais** en clair dans la config. |
 | **BF-REP-09** | La remontée **doit** être désactivable par `qa.reporting.enabled` (défaut `true`) sans toucher au code. |
 | **BF-REP-10** | Chaque appel **doit** être **stateless** : ouverture/fermeture de sa propre session ALM, aucune session partagée entre threads (sûreté en parallèle Serenity). |
 
-**Tranché** : reporting **AUTO** → **pas de factory**, domaine **`internal`** (D13/D15).
-**⚠️ Points ouverts (externes)** : version ALM cible (~18.4 à confirmer avant impl) ; format du fichier
-de mapping (à figer étape 8).
+**Tranché** : reporting **AUTO** → **pas de factory**, domaine **`internal`** (D13/D15) ; version ALM
+cible **24** (impl sur doc technique v24 — assez récente pour rester compatible v25/26) ; mode fichier =
+mapping à **2 colonnes** (adresse test Serenity ↔ adresse instance de test ALM).
+**⚠️ Reste à figer (étape 8, non bloquant)** : le **nom des colonnes** du fichier de mapping.
 
 ---
 
@@ -318,7 +319,7 @@ ayant un défaut. **Réf.** : D19, D16, D13.
 |---|---|
 | **BF-CONF-01** | Le socle **ne doit créer aucune couche de config maison** : il lit ses clés via l'API de config Serenity (`EnvironmentSpecificConfiguration` / system properties), qui fusionne `serenity.conf` + `serenity.properties` + system props. |
 | **BF-CONF-02** | Toute clé propre au socle **doit** avoir une **valeur par défaut** : si le consommateur ne configure rien, le socle fonctionne. |
-| **BF-CONF-03** | Les clés **doivent** fonctionner indifféremment depuis `serenity.conf` **ou** `serenity.properties`, selon la précédence Serenity (system props > `serenity.conf` > `serenity.properties`, **à confirmer** contre Serenity 4.2.22). |
+| **BF-CONF-03** | Les clés **doivent** fonctionner indifféremment depuis `serenity.conf` **ou** `serenity.properties`, selon la précédence Serenity **vérifiée (4.2.22)** : **propriétés système `-D…` / env > `serenity.conf` > `serenity.properties`** (blocs `environments { <name> }` sélectionnés par la propriété `environment`). |
 | **BF-CONF-04** | Le registre des clés du socle comprend au moins : `qa.failure.artefacts.{enabled,outputDir,dumpHtml}`, `qa.reporting.enabled`, `qa.alm.*` + `qa.alm.login`, `qa.logger.level`, `qa.archunit.basePackage`. Le `{ENV}` du nommage `KO__` n'est pas une clé socle (lu de l'`environment` Serenity, D19). |
 
 ---
@@ -392,5 +393,7 @@ D21, D7, roadmap étapes 2 et 10.
 1. ~~**Gouvernance versioning** (BF-VER) — N de dépréciation, critère de publication, gate de release.~~
    **✅ Clos (D21)** : dépréciation **≥ 3 versions mineures** (BF-VER-09) ; publication **mainteneur
    manuel sur CI verte** (BF-VER-10) ; **gate Maven `deploy` après `verify`** (BF-VER-11).
-2. **Confirmations externes** — précédence config Serenity 4.2.22, version ALM (~18.4), format du
-   fichier de mapping ALM.
+2. ~~**Confirmations externes** — précédence config Serenity 4.2.22, version ALM (~18.4), format du
+   fichier de mapping ALM.~~ **✅ Clos** : précédence **vérifiée** (`-D…`/env > `serenity.conf` >
+   `serenity.properties`, BF-CONF-03) ; **ALM v24** ; mapping = **2 colonnes** Serenity↔ALM (D13).
+   Seul reliquat **non bloquant** : nom des colonnes du fichier (étape 8).

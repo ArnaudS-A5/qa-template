@@ -252,7 +252,9 @@ que le contrat de sortie `KO__`, cf. D16) :
 - **Ne pas réinventer les annotations** : réutiliser les métadonnées **Serenity** existantes pour porter
   le mapping cas de test ↔ ALM, en priorité **`@WithTag`** (ex. `@WithTag("alm.testId:1042")`),
   lues par réflexion (`TestAnnotations`). `@Title` complète si besoin.
-- Version ALM cible : **à confirmer** (probablement ~18.4 — l'API varie selon la version, à figer avant impl).
+- Version ALM cible : **24** (implémentation basée sur la **doc technique de la version 24**). Choix
+  assumé : suffisamment récente pour qu'il n'y ait **pas de rupture majeure** avec les versions 25/26,
+  sans être la toute dernière. (Remplace l'estimation initiale ~18.4.)
 - **Squelettes créés** : `ReportingManager` + `AlmApiClient` + `TestExecutionResult` + `ExecutionStatus`,
   tous en **`internal.reporting`** (cf. **Activation AUTO** ci-dessous) — remplacent la classe unique
   `AlmReportingManager` qui mariait l'outil au concept. `ReportingManager` reste le **seam de swap**
@@ -295,7 +297,7 @@ Conçu extensible : des champs complémentaires (durée, message d'erreur…) po
 La résolution de l'identifiant ALM est **interne à `AlmApiClient`** ; le code de test ne manipule jamais de coordonnées ALM brutes.
 
 - **Mode annotation** (`@WithTag("alm.testId:1042")`) : lu par réflexion (`TestAnnotations` Serenity). Suffisant si l'ID seul identifie le cas de test dans la campagne. À privilégier tant que la structure ALM est simple et stable.
-- **Mode fichier** : fichier de mapping externe (format à figer à l'étape 8) associant le nom qualifié de la classe Java à ses coordonnées ALM. Privilégié quand les coordonnées sont multiples ou fréquemment changeantes (pas de recompilation).
+- **Mode fichier** : fichier de mapping externe. **Format** : un **mapping pur et simple à deux colonnes** — l'**adresse complète du test côté Serenity** (identité qualifiée du cas de test) en face de l'**adresse complète de l'instance de test côté ALM** (dans le scénario de test). Une ligne = une correspondance. Seul reste à figer à l'**étape 8** le **nom des colonnes** (le fonctionnement, lui, est arrêté). Privilégié quand les coordonnées sont multiples ou fréquemment changeantes (pas de recompilation).
 
 Les deux modes sont **alternatifs** (ni complémentaires, ni en surcharge). Le choix est piloté par la configuration. Un outil de génération du fichier de mapping sera produit si la structure ALM impose ce mode de façon systématique.
 
@@ -750,8 +752,14 @@ du fichier** (peu importe lequel le consommateur utilise).
   (transition douce des anciens projets) ; `serenity.conf` = config **structurée / par environnement**
   (HOCON, format moderne, greenfield).
 - Les clés propres au socle (`qa.failure.*`, D16) fonctionnent depuis l'un **ou** l'autre.
-- Précédence exacte (en principe system props > `serenity.conf` > `serenity.properties`) **à confirmer
-  contre Serenity 4.2.22** à l'implémentation.
+- Précédence exacte **vérifiée contre Serenity 4.2.22** (bytecode `PropertiesLocalPreferences`) :
+  **propriétés système `-D…` / variables d'environnement > `serenity.conf` (HOCON) > `serenity.properties`
+  (legacy)**. Mécanisme : la map de préférences est amorcée avec les propriétés système/env, puis
+  `setUndefinedSystemPropertiesFrom(...)` ne remplit que les clés **non déjà définies** (le premier qui
+  pose une clé gagne) ; dans `loadPreferences`, `serenity.conf` est chargé **avant** `serenity.properties`.
+  Les blocs `environments { <name> { … } }` sont sélectionnés par la propriété **`environment`** (la même
+  que celle d'où `TestFailureManager` lit `{ENV}`, D16). **Conséquence pratique** : un override par run en
+  CI se fait en `-Dqa.xxx=…`, sans toucher au fichier.
 
 ### Portée par composant
 
