@@ -81,7 +81,7 @@ délégation à l'opération native Selenium/Serenity quand l'élément est rée
 | `log` | *(aucun type public — log d'action via SLF4J natif)* | `LogbackConfigurator` *(coquille existante ; resources à venir — D16-bis)* | default Logback (namespace `"qa"`, clé `qa.logger.level`) imposé par la présence du jar, surchargeable ; **pas de façade maison** |
 | `failure` | *(hook à venir, étape 6)* | `TestFailureManager` | artefacts d'échec (logs + dump HTML) |
 | `secret` | `SecretManager`, `Secret` | `CyberArkApiClient` | récupération de secrets au runtime + valeur sensible avec masquage à implémenter (D12) |
-| `reporting` | `ReportingManager` | `AlmApiClient` | remontée des résultats vers ALM (D13) |
+| `reporting` | *(aucun type public — reporting AUTO, D13)* | `ReportingManager`, `AlmApiClient`, `TestExecutionReport`, `ExecutionStatus` | remontée des résultats vers ALM (D13) |
 | `exception` | `QaToolkitException` + `SyncException` / `DataFileException` / `SecretException` / `ReportingException` | — | hiérarchie d'erreurs **unchecked** (D18) ; traduit les exceptions tierces en conservant la `cause` |
 
 Les impls `internal` sont exposées uniquement via des points d'entrée publics quand c'est nécessaire :
@@ -117,9 +117,12 @@ KO__{ENV}__{NomDuTest}__{yyyy-MM-dd_HH-mm-ss}/
 
 ## Documentation
 
-- [Décisions d'architecture actées](qa-socle/docs/decisions.md) (D1–D20, amendées par D6-bis et D16-bis)
+- [Spécifications fonctionnelles détaillées (SFD)](qa-socle/docs/sfd.md) — contrat fonctionnel (besoins `BF-*`)
+- [Décisions d'architecture actées](qa-socle/docs/decisions.md) (D1–D22, amendées par D6-bis et D16-bis)
 - [Feuille de route de construction](qa-socle/docs/roadmap.md) (10 étapes)
 - [Gouvernance Git flow](qa-socle/docs/git-flow.md) (`master` + `develop` + branches de travail)
+- [Exemple de configuration consommateur](qa-socle/docs/serenity.conf.example) — registre des clés `qa.*` (défauts inclus)
+- [Revue du socle](qa-socle/docs/revue-socle.md) — analyse structure/classes + pièges d'implémentation
 
 ## Assistance Copilot (annexe)
 
