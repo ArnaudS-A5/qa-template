@@ -857,3 +857,37 @@ règles de gouvernance** d'une release du socle.
   n'est atteignable **que si `verify` passe** (tests + japicmp + ArchUnit).
 - **Portable et reproductible** : même garantie en local et en CI, **indépendant de l'outil d'intégration**
   (la logique de gating reste dans le projet, pas externalisée dans le pipeline).
+
+---
+
+## D22 — Assertions : `void` (lève) + mode *soft assert* configurable (roadmap étapes 6/8)
+
+### Forme : les `should…` lèvent, ne rendent rien
+
+- Les assertions d'état (`shouldBeVisible`, `shouldContainText`, leurs négations…) **restent `void`** :
+  contrat **« vérifie ou lève »** (standard JUnit/Hamcrest/Serenity). **Pas de retour `boolean`** : un
+  verdict qu'on peut ignorer transforme l'assertion en **no-op silencieux** — anti-pattern. Le besoin
+  booléen est **déjà** couvert par la famille **prédicats** (`is…` / `contains…`, qui rendent `boolean`).
+- **Mécanisme** (corps étape 8) : `should…(By)` résout l'élément **en interne** via l'API Serenity
+  (`WebElementFacade`/`WebElementState`), assertit, et lève une `AssertionError` en cas d'échec → le test
+  tombe → `TestFailureManager` capture les artefacts `KO__`. Le consommateur ne manipule **jamais**
+  l'élément (no-leak, BF-SYNC-04) ; `WebElementState` reste **caché**.
+
+### Mode *soft assert* : agréger puis échouer (non bloquant pour le gel)
+
+Besoin : pouvoir voir **toutes** les assertions cassées d'un test **en une passe** (les corriger d'un
+coup), au lieu de tomber sur la première.
+
+- **Point clé** : dur vs soft est un comportement du **corps**, **pas de la signature** — `should…`
+  reste `void` dans les deux cas. **Aucune nouvelle méthode publique**, **aucun impact sur le gel**.
+- Piloté par une **clé de config** **`qa.assertions.soft`** (*nom proposé, à confirmer*), **défaut
+  `false`** (mode dur).
+- En mode soft (`true`) : `should…` **n'lève pas** ; il **enregistre** l'échec (message + capture
+  éventuelle) dans un collecteur **par test** (`ThreadLocal`) et **continue**. En **fin de test**, le
+  listener **déjà en place** (`TestFailureManager`) **vide le collecteur** : s'il y a au moins un échec
+  soft, le test **échoue** avec le **récapitulatif agrégé** de **toutes** les assertions KO (+ artefacts)
+  — comportement **`assertAll`** (AssertJ/JUnit). **Pas** de mode « warning + vert » (on ne masque jamais
+  une vérification cassée à la CI).
+- **Implémentation à l'étape 8.** Mécanisme exact du « faire échouer en fin de test » (extension JUnit /
+  callback `afterEach` auto-enregistré vs listener) à arrêter à l'impl ; contrainte : **zéro ligne** côté
+  code de test (bascule par la seule clé) et **pas de complexité** ajoutée à l'écriture du Framework.

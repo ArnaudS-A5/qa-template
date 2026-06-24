@@ -109,13 +109,14 @@ mais avec une **synchronisation intégrée à chaque méthode**, robuste aux SPA
 | **BF-SYNC-06** | Le socle **doit** offrir les **actions communes** : `click`, `type(By, CharSequence…)`, `typeAndEnter`, `clear`. |
 | **BF-SYNC-07** | Le socle **doit** offrir les **lectures communes** : texte (`getText`, `getTextValue`, `getValue`), métadonnées (`getTagName`, `getAttribute`, `getDomAttribute`, `getDomProperty`, `getAriaRole`, `getAccessibleName`). |
 | **BF-SYNC-08** | Le socle **doit** offrir les **états booléens** : `isSelected`, `isEnabled`, `isDisabled`, `isDisplayed`, `isCurrentlyVisible`, `isClickable`, `isPresent`, `hasFocus`, `containsText`, `containsOnlyText`, `containsValue`. |
-| **BF-SYNC-09** | Le socle **doit** offrir des **assertions d'état** (`shouldBeVisible`, `shouldBePresent`, `shouldContainText`, … et leurs négations) qui **lèvent** en cas d'échec et ne retournent rien (no-leak). |
+| **BF-SYNC-09** | Le socle **doit** offrir des **assertions d'état** (`shouldBeVisible`, `shouldBePresent`, `shouldContainText`, … et leurs négations) qui **lèvent** en cas d'échec et **retournent `void`** (no-leak ; contrat « vérifie ou lève », jamais de `boolean` — le besoin booléen est couvert par les prédicats `is…`/`contains…`, BF-SYNC-08). *(D22)* |
 | **BF-SYNC-10** | Le socle **doit** offrir **géométrie/capture** (`getLocation`, `getSize`, `getRect`, `getScreenshotAs`), **collections sans handle** (`count`, `getTexts`) et **attentes explicites** (`waitUntilVisible/Present/NotVisible/Clickable/Enabled/Disabled`, `waitForElement`, `waitForElementToDisappear`). |
 | **BF-SYNC-11** | `WebSync` **doit** ajouter le **spécifique web** : `submit`, `doubleClick`, `contextClick`, `typeAndTab`, `setWindowFocus`, listes `<select>` (sélection/désélection par libellé/valeur/index, lecture des options/sélections), DOM/CSS (`getTextContent`, `getAriaLabel`, `getCssValue`, `hasClass`, `containsElements`). |
 | **BF-SYNC-12** | `MobileSync` **doit** ajouter les **gestes mobiles** : tap/doubleTap/longPress, swipe (coordonnées et par `By`+`SwipeDirection`), scroll/scrollTo, pinch/zoom, dragAndDrop ; clavier (`hideKeyboard`, `isKeyboardShown`, `pressKey`) ; orientation (`rotatePortrait/Landscape`, `getOrientation`) ; contexte natif/webview (`switchToNativeContext`, `switchToWebViewContext`, `getCurrentContext`) ; cycle de vie app (`launchApp`, `runAppInBackground`, `resetApp`) ; fichiers (`pushFile`, `pullFile`). |
 | **BF-SYNC-13** | Le driver mobile **doit** être obtenu depuis le `WebDriver` Serenity du thread courant et casté **en interne** en `AppiumDriver` : **aucun type Appium** ne **doit** apparaître dans l'API publique. |
 | **BF-SYNC-14** | La saisie d'une **valeur sensible** **doit** se faire via `type(By, Secret)` : le clair (`secret.value()`) est saisi dans le DOM, mais seul le rendu **masqué** apparaît dans le log d'action. C'est le **seul** point de déballage d'un `Secret` pour la saisie. |
 | **BF-SYNC-15** | Au timeout, l'échec **doit** être traduit en `SyncException` porteuse d'un **message différencié** : « mauvaise page / page non chargée » si l'élément est absent ; « application instable » s'il est présent mais jamais interactable. Ces messages alimentent `TestFailureManager` et l'agent de maintenance (D9). |
+| **BF-SYNC-16** | Le socle **doit** offrir un mode **soft assert** piloté par config (`qa.assertions.soft`, défaut `false`) **sans changer les signatures** (`should…` reste `void`) : en mode soft, les assertions **n'lèvent pas** mais sont **collectées** (par test, `ThreadLocal`) ; en **fin de test**, `TestFailureManager` agrège et **fait échouer** le test avec le récapitulatif de **toutes** les assertions KO (style `assertAll`). Pas de mode « warning + vert ». Bascule par la **seule clé**, zéro ligne côté test. *(D22, impl étape 8)* |
 
 **Règles de gestion** : `fluentWait` est écrit **une seule fois** dans l'abstract, `protected`, jamais
 réimplémenté par les sous-classes (D3 maj). À l'intérieur, l'action délègue à l'API publique Serenity
@@ -320,7 +321,7 @@ ayant un défaut. **Réf.** : D19, D16, D13.
 | **BF-CONF-01** | Le socle **ne doit créer aucune couche de config maison** : il lit ses clés via l'API de config Serenity (`EnvironmentSpecificConfiguration` / system properties), qui fusionne `serenity.conf` + `serenity.properties` + system props. |
 | **BF-CONF-02** | Toute clé propre au socle **doit** avoir une **valeur par défaut** : si le consommateur ne configure rien, le socle fonctionne. |
 | **BF-CONF-03** | Les clés **doivent** fonctionner indifféremment depuis `serenity.conf` **ou** `serenity.properties`, selon la précédence Serenity **vérifiée (4.2.22)** : **propriétés système `-D…` / env > `serenity.conf` > `serenity.properties`** (blocs `environments { <name> }` sélectionnés par la propriété `environment`). |
-| **BF-CONF-04** | Le registre des clés du socle comprend au moins : `qa.failure.artefacts.{enabled,outputDir,dumpHtml}`, `qa.reporting.enabled`, `qa.alm.*` + `qa.alm.login`, `qa.logger.level`, `qa.archunit.basePackage`. Le `{ENV}` du nommage `KO__` n'est pas une clé socle (lu de l'`environment` Serenity, D19). |
+| **BF-CONF-04** | Le registre des clés du socle comprend au moins : `qa.failure.artefacts.{enabled,outputDir,dumpHtml}`, `qa.reporting.enabled`, `qa.alm.*` + `qa.alm.login`, `qa.logger.level`, `qa.archunit.basePackage`, `qa.assertions.soft` (défaut `false`, D22). Le `{ENV}` du nommage `KO__` n'est pas une clé socle (lu de l'`environment` Serenity, D19). |
 
 ---
 
@@ -374,7 +375,7 @@ D21, D7, roadmap étapes 2 et 10.
 
 | Domaine | Besoins | Composants | Décisions | Étape roadmap | État signatures |
 |---|---|---|---|---|---|
-| SYNC | BF-SYNC-01…15 | `WebSync`, `MobileSync`, `AbstractSyncManager`, `SwipeDirection` | D3, D4 | 6 → 8 | ✅ figées |
+| SYNC | BF-SYNC-01…16 | `WebSync`, `MobileSync`, `AbstractSyncManager`, `SwipeDirection` | D3, D4, D22 | 6 → 8 | ✅ figées (soft assert = comportement étape 8) |
 | DATA | BF-DATA-01…09 | `DataFileManager`, `DataFiles`, `Abstract…`, `Excel`/`Csv…` | D5 | 6 → 8 | ✅ figées |
 | SECRET | BF-SEC-01…06 | `SecretManager`, **`SecretManagers`** (factory), `CyberArkApiClient` | D12 | 6 → 8 | ✅ figées + factory |
 | MASK | BF-MASK-01…06 | `Secret` (+ `TestFailureManager`) | D12, D14, D16-bis | 6/7 → 8 | ✅ signatures + format acté (D12) |
