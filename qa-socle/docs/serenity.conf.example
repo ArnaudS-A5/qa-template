@@ -1,0 +1,73 @@
+# =============================================================================
+# Exemple de configuration consommateur — clés lues par le socle QA
+# =============================================================================
+# Le socle ne crée AUCUNE couche de config maison (D19) : il lit ses clés via
+# l'API de config Serenity, qui fusionne (par précédence DÉCROISSANTE) :
+#
+#       -Dcle=valeur (propriété système)  /  variable d'environnement
+#     > serenity.conf       (HOCON, ce format)
+#     > serenity.properties (legacy, clés simples)
+#
+# Précédence vérifiée sur Serenity 4.2.22 (BF-CONF-03). Un override par run en CI
+# se fait donc en -Dqa.xxx=... sans toucher au fichier.
+#
+# TOUTES les clés `qa.*` ont une valeur PAR DÉFAUT (BF-CONF-02) : si vous ne
+# configurez rien, le socle fonctionne. Ce fichier liste les clés et leurs défauts
+# pour que vous sachiez quoi surcharger.
+#
+# ⚠️ Ceci est un EXEMPLE (suffixe .example) : il n'est PAS chargé tel quel — un vrai
+#    `serenity.conf` posé dans le jar du socle serait lu par tous les consommateurs.
+#    Copiez les clés utiles dans le `serenity.conf` de VOTRE projet consommateur.
+# ⚠️ Ne committez JAMAIS de secret en clair ici (mots de passe = via SecretManager).
+# =============================================================================
+
+# --- Environnement Serenity actif --------------------------------------------
+# Sélectionne le bloc environments { <name> } ci-dessous, ET fournit le {ENV} du
+# nommage des artefacts KO__{ENV}__... (D16/D19) — source UNIQUE, pas de clé socle dédiée.
+environment = recette
+
+# --- Capture d'échec : artefacts KO__ (domaine FAILURE, D16) -----------------
+qa.failure.artefacts.enabled   = true              # opt-out global si false
+qa.failure.artefacts.outputDir = target/qa-results # pointer HORS de target/ pour survivre à `mvn clean`
+qa.failure.artefacts.dumpHtml  = true              # dump HTML de la step en erreur
+
+# --- Journalisation : log live (domaine LOG, D16-bis/D17) --------------------
+# Niveau du logger « qa » (namespace stable, indépendant du base package).
+# Surchargeable plus finement par un logback.xml local (prioritaire).
+qa.logger.level = WARN   # TRACE | DEBUG | INFO | WARN | ERROR
+
+# --- Assertions (domaine SYNC, D22) ------------------------------------------
+# false = mode dur (échoue à la 1re assertion). true = soft assert : agrège toutes
+# les assertions KO du test puis échoue en fin de test (style assertAll).
+qa.assertions.soft = false
+
+# --- Garde-fous ArchUnit (ENF-02, D19) ---------------------------------------
+# Normalement renseigné par le Parent POM (qa.archunit.basePackage = ${project.groupId}).
+# À surcharger uniquement pour désactiver une règle en urgence (échappatoire VISIBLE).
+# qa.archunit.basePackage = com.example.qa
+
+# --- Reporting ALM (domaine REPORTING, D13) — remontée AUTO ------------------
+qa.reporting.enabled = true                 # false = désactive la remontée sans toucher au code
+qa.alm.login         = "votre_login_alm"    # mot de passe : JAMAIS ici → SecretManager (CyberArk), BF-REP-08
+
+# Coordonnées ALM — profil « défaut » (campagnes par application) : coordonnées
+# communes en config, ID d'instance de test par test (via @WithTag("alm.testId:1042")).
+# NB : les noms de feuilles `qa.alm.*` ci-dessous sont INDICATIFS — les leaf keys exactes
+#      sous le préfixe `qa.alm.*` seront figées à l'étape 8 avec AlmApiClient.
+qa.alm.domain   = "VOTRE_DOMAIN"
+qa.alm.project  = "VOTRE_PROJECT"
+qa.alm.testPlan = "chemin/du/test/plan"
+qa.alm.testSet  = "chemin/du/test/set"
+# Profil « tout fichier » (campagnes par thématique) : toutes les coordonnées dans le
+# fichier de mapping → les clés qa.alm.* ci-dessus sont alors IGNORÉES (D13).
+
+# --- Configuration par environnement (HOCON) ---------------------------------
+# Le bloc sélectionné par `environment` (en tête) surcharge les valeurs globales.
+environments {
+  recette {
+    qa.alm.testPlan = "chemin/recette/test/plan"
+  }
+  integ {
+    qa.failure.artefacts.outputDir = "../qa-results-integ"  # hors target/
+  }
+}
