@@ -327,7 +327,7 @@ ayant un défaut. **Réf.** : D19, D16, D13.
 
 **Objectif** : un versioning **imposé par le socle, centralisé, reproductible et compatible Maven 4**.
 **Composants** : `qa-parent` (Parent POM), Maven Wrapper, `maven-enforcer-plugin`. **Réf.** : D6, D6-bis,
-D7, roadmap étapes 2 et 10.
+D21, D7, roadmap étapes 2 et 10.
 
 | ID | Besoin fonctionnel |
 |---|---|
@@ -339,10 +339,9 @@ D7, roadmap étapes 2 et 10.
 | **BF-VER-06** | Le versioning **doit** être **SemVer strict** : jamais de breaking change en mineur/patch, ni sur l'API publique, ni sur le **contrat de sortie** (BF-FAIL-06). |
 | **BF-VER-07** | À partir de la 1ʳᵉ release, un **garde-fou de compatibilité** (japicmp/revapi) **doit** faire échouer le build sur breaking change non intentionnel, baseline = dernière version publiée (périmètre = packages `api`). |
 | **BF-VER-08** | Un **mécanisme d'échappement** **doit** permettre de figer ponctuellement un projet (non-merge de la PR de bump / `git revert`). |
-
-**⚠️ Points ouverts (étape 2, pour clôture)** : règle de dépréciation (`@Deprecated` + maintien sur
-**N** versions — fixer N) ; **qui** publie une version et **sur quel critère** ; **comment** la
-non-régression **bloque** la release (gate, lié à la CI Jenkins D7).
+| **BF-VER-09** | Un élément d'API retiré **doit** d'abord être marqué `@Deprecated` (+ remplacement en Javadoc) en version **mineure**, et **ne peut être supprimé qu'après ≥ 3 versions mineures** de coexistence (déprécié en `x.y` → retirable au plus tôt en `x.(y+3)`). Unique entorse bornée au SemVer strict. *(D21)* |
+| **BF-VER-10** | La publication d'une release **doit** être **déclenchée manuellement par le mainteneur**, **uniquement** sur **CI verte** (non-régression BF-VAL-05 passée). Pas de publication automatique sur tag/branche. *(D21)* |
+| **BF-VER-11** | La non-régression **doit** bloquer la release via un **gate Maven** : `deploy` n'est atteignable que si `verify` (tests + japicmp + ArchUnit) passe — gate **dans le build**, indépendant de l'outil d'intégration (D7). *(D21)* |
 
 ---
 
@@ -383,13 +382,15 @@ non-régression **bloque** la release (gate, lié à la CI Jenkins D7).
 | LOG | BF-LOG-01…05 | `LogbackConfigurator` | D14, D16-bis, D17 | 6 → 8 | ✅ constantes + scope tranché (`compile` + ArchUnit) |
 | ERR | BF-ERR-01…07 | `QaToolkitException` + 4 sous-types | D18 | 3 (✅) | ✅ figées (sans `throws`) |
 | CONF | BF-CONF-01…04 | (transverse, Serenity) | D19 | 4 (✅) → 8 | n/a |
-| VER | BF-VER-01…08 | `qa-parent`, Wrapper, Enforcer | D6, D6-bis, D7 | 2, 10 | 🟡 partiel |
+| VER | BF-VER-01…11 | `qa-parent`, Wrapper, Enforcer | D6, D6-bis, D21, D7 | 2 (✅) , 10 | 🟡 partiel |
 | VAL | BF-VAL-01…05 | projet consommateur, WireMock, fixtures | D20 | 5 (✅) → 8/9 | n/a |
 
 ---
 
 ## 7. Points ouverts consolidés (à clore avant gel / implémentation)
 
-1. **Gouvernance versioning** (BF-VER) — N de dépréciation, critère de publication, gate de release.
+1. ~~**Gouvernance versioning** (BF-VER) — N de dépréciation, critère de publication, gate de release.~~
+   **✅ Clos (D21)** : dépréciation **≥ 3 versions mineures** (BF-VER-09) ; publication **mainteneur
+   manuel sur CI verte** (BF-VER-10) ; **gate Maven `deploy` après `verify`** (BF-VER-11).
 2. **Confirmations externes** — précédence config Serenity 4.2.22, version ALM (~18.4), format du
    fichier de mapping ALM.

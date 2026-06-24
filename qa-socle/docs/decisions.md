@@ -812,3 +812,40 @@ du fichier** (peu importe lequel le consommateur utilise).
 - **CI de non-régression** : **pas de dispositif isolé du socle**. Elle = **tests unitaires du socle** +
   **projet consommateur dédié**, exécutés contre **chaque nouvelle version du socle avant publication**
   (réf. D6/étape 2). Seuil de couverture : à définir si besoin (non bloquant).
+
+---
+
+## D21 — Gouvernance des releases : dépréciation, publication, gate (roadmap étape 2)
+
+Complète D6/D6-bis (versioning, montée par outil) et D20 (CI de non-régression) en fixant **les trois
+règles de gouvernance** d'une release du socle.
+
+### Politique de dépréciation : retrait après **≥ 3 versions mineures**
+
+- Un élément d'API retiré du contrat (méthode, type, format de sortie D8/D16) est d'abord marqué
+  **`@Deprecated`** (+ Javadoc indiquant le remplacement) en version **mineure**, **jamais supprimé dans
+  la foulée**.
+- Le **retrait effectif** n'est autorisé qu'après **au moins 3 versions mineures** de coexistence
+  (déprécié en `x.y` → retirable au plus tôt en `x.(y+3)`).
+- **Rationale** : le socle est **conçu pour très peu bouger** ; les versions **MAJEURES seront rares**.
+  Attendre un MAJOR pour nettoyer (SemVer pur) laisserait du code déprécié traîner **des années** — ou
+  forcerait à publier un MAJOR à la moindre modification. Le délai de grâce en **mineures** est le bon
+  compromis : il permet de nettoyer à un rythme raisonnable sans imposer un MAJOR.
+- **Entorse assumée au SemVer strict** : ce retrait en mineure est l'**unique** exception, **bornée** (≥ 3
+  mineures) et **annoncée** (`@Deprecated` + japicmp signale la rupture, réf. étape 10). Tout autre
+  breaking change reste réservé au MAJOR.
+
+### Publication : **mainteneur, manuel, sur CI verte**
+
+- La release est **déclenchée manuellement par le mainteneur**, **uniquement** une fois la **CI au vert**
+  (non-régression D20 passée).
+- **Pas de publication automatique** sur tag/branche : le moment du release reste un **geste humain
+  contrôlé** (lib socle consommée par ~17 projets → on garde la main sur le « quand »).
+- Coût assumé : dépend de la disponibilité du mainteneur (acceptable vu la fréquence faible des releases).
+
+### Gate de non-régression : **gate Maven (`deploy` après `verify`)**
+
+- Le blocage vit dans le **build Maven**, pas dans Jenkins (D7, CI gérée par une autre équipe) : `deploy`
+  n'est atteignable **que si `verify` passe** (tests + japicmp + ArchUnit).
+- **Portable et reproductible** : même garantie en local et en CI, **indépendant de l'outil d'intégration**
+  (la logique de gating reste dans le projet, pas externalisée dans le pipeline).

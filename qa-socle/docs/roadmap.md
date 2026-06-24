@@ -20,7 +20,7 @@ SANS implémentation** (coquilles typées).
 | # | Étape | Dépend de | Statut |
 | --- | --- | --- | --- |
 | 1 | Décider la convention de visibilité (public vs interne) | — | ✅ Fait (D15) |
-| 2 | Politique de versioning & compatibilité (D6 historique remplacée par D6-bis) | 1 | 🟡 En cours (D6-bis actée, Wrapper + Enforcer en place) |
+| 2 | Politique de versioning & compatibilité (D6 historique remplacée par D6-bis) | 1 | ✅ Terminé (D6-bis : Wrapper + Enforcer ; D21 : dépréciation/publication/gate) |
 | 3 | Stratégie transverse d'erreurs | — (avant 6) | ✅ Fait (D18) |
 | 4 | Configuration & portée/thread-safety des composants | — (avant 6) | ✅ Fait (D19) |
 | 5 | Stratégie de test du socle | — (avant 8) | ✅ Fait (D20) |
@@ -67,16 +67,16 @@ méthode. La placer ici évite un déplacement coûteux de toutes les classes un
 épinglée explicite** — abandon de `RELEASE`, supprimé en Maven 4 — + SemVer + garde-fous + mécanisme
 d'échappement). Découle de l'étape 1 (on ne versionne que ce qui est public).
 
-**Statut : 🟡 En cours** — *cœur acté en [D6-bis](decisions.md) ; D6 est historique/remplacée ; Wrapper +
-Enforcer en place ; ne reste que ci-dessous*
+**Statut : ✅ Terminé** — *cœur acté en [D6-bis](decisions.md) (D6 historique/remplacée ; Wrapper +
+Enforcer en place) ; gouvernance dépréciation/publication/gate actée en [D21](decisions.md)*
 
 - [x] SemVer + Parent POM + **version épinglée** (abandon du mot-clé Maven `RELEASE`) + mécanisme d'échappement → **acté en D6-bis**.
 - [x] Maven Wrapper 3.9.9 + `maven-enforcer-plugin` (`requireMavenVersion`, `requireJavaVersion`,
       `banDynamicVersions`, `bannedDependencies`) → **en place (D6-bis)**.
-- [ ] Règle de dépréciation : `@Deprecated` + maintien sur **N** versions (fixer N).
-- [ ] Qui publie une version et **sur quel critère** (cf. `artifactory-jfrog-settings`).
-- [ ] Non-régression : **quels tests** = tests unitaires socle + projet consommateur dédié (acté
-      **D20**) ; reste **comment elle bloque la release** (gate, lié à la CI Jenkins — D7).
+- [x] Règle de dépréciation : `@Deprecated` + maintien **≥ 3 versions mineures** avant retrait → **acté en D21**.
+- [x] Qui publie une version et **sur quel critère** : **mainteneur, manuel, sur CI verte** → **acté en D21**.
+- [x] Non-régression : **quels tests** = tests unitaires socle + projet consommateur dédié (acté
+      **D20**) ; **comment elle bloque la release** = **gate Maven (`deploy` après `verify`)** → **acté en D21**.
 
 > La **date de gel** de l'API n'est PAS ici : l'API n'existe qu'à l'étape 6 → gel rattaché à sa fin.
 
