@@ -3,7 +3,7 @@ package com.example.qa.internal.reporting;
 /**
  * Statut d'exécution d'un cas de test tel que remontré dans l'outil de gestion de tests.
  *
- * <p>Utilisé par {@link TestExecutionResult} (publication finale) et implicitement par
+ * <p>Utilisé par {@link TestExecutionReport} (publication finale) et implicitement par
  * {@link ReportingManager#publishStart} (qui envoie {@code IN_PROGRESS} sans passer par cet enum).
  */
 public enum ExecutionStatus {

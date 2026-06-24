@@ -8,7 +8,7 @@ package com.example.qa.internal.reporting;
  *
  * <p><b>Activation native (AUTO)</b> : un listener interne du socle (même mécanisme que la capture
  * d'échec — {@code TestExecutionListener} JUnit) appelle {@link #publishStart(String)} au début et
- * {@link #publishEnd(TestExecutionResult)} à la fin de <b>chaque</b> test. Le consommateur ne fait que
+ * {@link #publishEnd(TestExecutionReport)} à la fin de <b>chaque</b> test. Le consommateur ne fait que
  * poser {@code @WithTag("alm.testId:1042")} et configurer {@code qa.alm.*} — aucune ligne d'appel.
  *
  * <p><b>Résolution de l'ID ALM</b> (depuis {@code @WithTag}, lu par réflexion) :
@@ -48,5 +48,5 @@ public interface ReportingManager {
      * @param result résultat d'exécution (identifiant ALM + statut final)
      * @throws com.example.qa.api.exception.ReportingException si l'appel ALM échoue
      */
-    void publishEnd(TestExecutionResult result);
+    void publishEnd(TestExecutionReport result);
 }

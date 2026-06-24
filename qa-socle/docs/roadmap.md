@@ -184,8 +184,8 @@ l'étape 8.*
 - [x] `SecretManager` (+ `CyberArkApiClient`) — signatures de récupération de secrets posées.
 - [x] `Secret` — contrat public de **valeur sensible** posé (`of`, `value`, `masked`,
       `sha256Prefix`, `toString`) ; implémentation du masquage en étape 7/8.
-- [x] `ReportingManager` (+ `AlmApiClient`, `ExecutionStatus`, `TestExecutionResult`) — signatures
-      arrêtées : `publishStart(String almTestId)` + `publishEnd(TestExecutionResult)`. **Reporting AUTO**
+- [x] `ReportingManager` (+ `AlmApiClient`, `ExecutionStatus`, `TestExecutionReport`) — signatures
+      arrêtées : `publishStart(String almTestId)` + `publishEnd(TestExecutionReport)`. **Reporting AUTO**
       (listener du socle) → **tout le domaine en `internal.reporting`**, aucun type public (cf. D13/D15).
 - [x] **Frontière API `sync`** — **tranché (option A, cf. D15)** : `AbstractSyncManager` reste
       `internal`, mais ses méthodes publiques (héritées par `WebSync`/`MobileSync`) sont **gelées** →

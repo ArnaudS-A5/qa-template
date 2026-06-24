@@ -2,16 +2,19 @@ package com.example.qa.internal.reporting;
 
 /**
  * Remontée des résultats d'exécution vers ALM (OpenText/HP ALM) via son API REST
- * (version ~18.4 à confirmer avant implémentation).
+ * (version cible <b>24</b> — implémentation basée sur la doc technique v24, D13 ; assez récente
+ * pour rester compatible v25/26).
  *
  * <p><b>Stratégie de mapping (deux modes alternatifs, non cumulatifs — D13 mis à jour) :</b>
  * <ul>
  *   <li><b>Mode annotation</b> — {@code @WithTag("alm.testId:1042")} lue par réflexion
  *       ({@code TestAnnotations}) : suffisant si l'ID seul identifie le cas de test dans la
  *       campagne ALM.</li>
- *   <li><b>Mode fichier</b> — fichier de mapping externe (format à figer à l'étape 8) associant
- *       le nom qualifié de la classe de test à ses coordonnées ALM. Privilégié quand les
- *       coordonnées sont multiples ou fréquemment changeantes (pas de recompilation).</li>
+ *   <li><b>Mode fichier</b> — fichier de mapping externe à <b>deux colonnes</b> : l'adresse
+ *       complète du test côté Serenity en face de l'adresse complète de l'instance de test côté
+ *       ALM (une ligne = une correspondance). Le fonctionnement est arrêté (D13) ; seul le
+ *       <b>nom des colonnes</b> reste à figer à l'étape 8. Privilégié quand les coordonnées sont
+ *       multiples ou fréquemment changeantes (pas de recompilation).</li>
  * </ul>
  * La résolution est interne : le code de test ne manipule jamais de coordonnées ALM brutes.
  *
@@ -36,7 +39,7 @@ public class AlmApiClient implements ReportingManager {
     }
 
     @Override
-    public void publishEnd(TestExecutionResult result) {
+    public void publishEnd(TestExecutionReport result) {
         // Coquille typée (étape 6) : appel REST du statut final à implémenter en étape 8.
     }
 }

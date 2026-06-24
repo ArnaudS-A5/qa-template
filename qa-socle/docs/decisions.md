@@ -255,7 +255,7 @@ que le contrat de sortie `KO__`, cf. D16) :
 - Version ALM cible : **24** (implémentation basée sur la **doc technique de la version 24**). Choix
   assumé : suffisamment récente pour qu'il n'y ait **pas de rupture majeure** avec les versions 25/26,
   sans être la toute dernière. (Remplace l'estimation initiale ~18.4.)
-- **Squelettes créés** : `ReportingManager` + `AlmApiClient` + `TestExecutionResult` + `ExecutionStatus`,
+- **Squelettes créés** : `ReportingManager` + `AlmApiClient` + `TestExecutionReport` + `ExecutionStatus`,
   tous en **`internal.reporting`** (cf. **Activation AUTO** ci-dessous) — remplacent la classe unique
   `AlmReportingManager` qui mariait l'outil au concept. `ReportingManager` reste le **seam de swap**
   (ALM → autre), désormais interne.
@@ -267,7 +267,7 @@ La remontée est **automatique**, comme la capture d'échec : un **listener inte
 `publishEnd` à la **fin** de chaque test. **Le consommateur ne fait que** poser `@WithTag` + configurer
 `qa.alm.*` — **aucune ligne d'appel, aucune factory**. Conséquence : **tout le domaine reporting est
 `internal`** (aucun type public — cf. D15) ; le consommateur ne référence jamais `ReportingManager` /
-`TestExecutionResult` / `ExecutionStatus`.
+`TestExecutionReport` / `ExecutionStatus`.
 
 **Résolution de l'ID ALM depuis `@WithTag` (lu par réflexion) :**
 - **aucun** tag `alm.testId` → test **non remonté** (opt-out **silencieux** par test) ;
@@ -281,9 +281,9 @@ Signatures arrêtées lors de l'écriture des coquilles typées (étape 6).
 #### API de publication (deux appels par test, émis par le listener)
 
 - `publishStart(String almTestId)` → appelé en **début de test** ; pousse le statut « In Progress » dans ALM.
-- `publishEnd(TestExecutionResult result)` → appelé en **fin de test** (quel que soit le résultat) ; pousse le statut final.
+- `publishEnd(TestExecutionReport result)` → appelé en **fin de test** (quel que soit le résultat) ; pousse le statut final.
 
-`TestExecutionResult` est un **objet valeur neutre** (package `internal.reporting`) : `almTestId` (String) + `status` (ExecutionStatus).
+`TestExecutionReport` est un **objet valeur neutre** (package `internal.reporting`) : `almTestId` (String) + `status` (ExecutionStatus).
 Conçu extensible : des champs complémentaires (durée, message d'erreur…) pourront être ajoutés sans rompre la signature de `publishEnd`.
 
 `ExecutionStatus` est une **enum maison** (package `internal.reporting`) : `IN_PROGRESS`, `PASSED`, `FAILED`.
@@ -392,7 +392,7 @@ Frontière entre le **contrat public** (consommé par les ~17 projets) et l'**in
 | `DataFileManager` | `api.data` | interface = contrat |
 | `SecretManager` | `api.secret` | interface = contrat |
 | `SecretManagers` | `api.secret` | **factory publique** : seul accès au `SecretManager`, cache `CyberArkApiClient` (idiome JDK `Executors`) |
-| `ReportingManager`, `TestExecutionResult`, `ExecutionStatus` | `internal.reporting` | reporting **AUTO** (listener du socle) → **aucun type public** ; `ReportingManager` reste le **seam de swap** interne (D13) |
+| `ReportingManager`, `TestExecutionReport`, `ExecutionStatus` | `internal.reporting` | reporting **AUTO** (listener du socle) → **aucun type public** ; `ReportingManager` reste le **seam de swap** interne (D13) |
 | `Secret` | `api.secret` | type « valeur sensible » manipulé par le consommateur ; signatures de masquage posées, corps à fournir en étape 7/8 |
 | `QaToolkitException` + `SyncException` / `DataFileException` / `SecretException` / `ReportingException` | `api.exception` | hiérarchie d'erreurs **publique** (contrat), unchecked — cf. D18 ; dans le périmètre japicmp (étape 10) |
 | `AbstractSyncManager` | `internal.sync` | moteur, extension non prévue |

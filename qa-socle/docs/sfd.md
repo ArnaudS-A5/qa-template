@@ -1,4 +1,4 @@
-tell# Spécifications Fonctionnelles Détaillées (SFD) — Socle QA
+# Spécifications Fonctionnelles Détaillées (SFD) — Socle QA
 
 > **Statut du document** : version de référence pour la phase de conception (coquilles typées).
 > Décrit les **besoins fonctionnels** du socle tels qu'arrêtés par les décisions d'architecture
@@ -219,13 +219,13 @@ dans `ERROR.log`, `FAIL.log`, le dump HTML et la sortie console, y compris en ca
 
 **Objectif** : publier l'avancement et le résultat des cas de test dans l'outil de gestion de tests
 (ALM OpenText/HP), **automatiquement** (reporting AUTO). **Composants** (tous **`internal.reporting`**) :
-`ReportingManager`, `TestExecutionResult`, `ExecutionStatus`, `AlmApiClient`. **Réf.** : D13, D15, D19.
+`ReportingManager`, `TestExecutionReport`, `ExecutionStatus`, `AlmApiClient`. **Réf.** : D13, D15, D19.
 
 | ID | Besoin fonctionnel |
 |---|---|
 | **BF-REP-01** | Le reporting **doit** être **AUTO** : un **listener interne** du socle (comme la capture d'échec) publie pour **chaque** test. Le consommateur **ne référence aucun type reporting** (tout `internal`) — il pose `@WithTag("alm.testId:…")` + configure `qa.alm.*`. `ReportingManager` (interne) reste le **seam de swap** (ALM → autre = nouvelle impl). |
-| **BF-REP-02** | Le cycle **doit** comporter **deux appels par test, émis par le listener** : `publishStart(String almTestId)` en début (« In Progress ») et `publishEnd(TestExecutionResult)` en fin (statut final). Résolution `@WithTag` : **aucun** tag `alm.testId` → **non remonté** (opt-out silencieux) ; **plusieurs** → le **premier**. |
-| **BF-REP-03** | `TestExecutionResult` **doit** être un objet valeur neutre immuable (`almTestId` + `status`), **extensible** (durée, message d'erreur…) sans rompre la signature de `publishEnd`. |
+| **BF-REP-02** | Le cycle **doit** comporter **deux appels par test, émis par le listener** : `publishStart(String almTestId)` en début (« In Progress ») et `publishEnd(TestExecutionReport)` en fin (statut final). Résolution `@WithTag` : **aucun** tag `alm.testId` → **non remonté** (opt-out silencieux) ; **plusieurs** → le **premier**. |
+| **BF-REP-03** | `TestExecutionReport` **doit** être un objet valeur neutre immuable (`almTestId` + `status`), **extensible** (durée, message d'erreur…) sans rompre la signature de `publishEnd`. |
 | **BF-REP-04** | `ExecutionStatus` **doit** énumérer `IN_PROGRESS`, `PASSED`, `FAILED`. |
 | **BF-REP-05** | La résolution de l'identifiant ALM **doit** être **interne** à `AlmApiClient` : le code de test ne manipule **jamais** de coordonnées ALM brutes. |
 | **BF-REP-06** | Le mapping test↔ALM **doit** offrir **deux modes alternatifs** (pilotés par config, jamais cumulés) : **mode annotation** (`@WithTag("alm.testId:1042")` lu par réflexion via `TestAnnotations`) et **mode fichier** (mapping externe **à deux colonnes** : adresse complète du test côté Serenity ↔ adresse complète de l'instance de test côté ALM ; une ligne = une correspondance, sans recompilation). |
@@ -382,7 +382,7 @@ D21, D7, roadmap étapes 2 et 10.
 | DATA | BF-DATA-01…09 | `DataFileManager`, `DataFiles`, `Abstract…`, `Excel`/`Csv…` | D5 | 6 → 8 | ✅ figées |
 | SECRET | BF-SEC-01…06 | `SecretManager`, **`SecretManagers`** (factory), `CyberArkApiClient` | D12 | 6 → 8 | ✅ figées + factory |
 | MASK | BF-MASK-01…06 | `Secret` (+ `TestFailureManager`) | D12, D14, D16-bis | 6/7 → 8 | ✅ signatures + format acté (D12) |
-| REPORTING | BF-REP-01…10 | `ReportingManager`, `TestExecutionResult`, `ExecutionStatus`, `AlmApiClient` (tous **`internal`**) | D13 | 6 → 8 | ✅ figées + **AUTO/internal** (pas de factory) |
+| REPORTING | BF-REP-01…10 | `ReportingManager`, `TestExecutionReport`, `ExecutionStatus`, `AlmApiClient` (tous **`internal`**) | D13 | 6 → 8 | ✅ figées + **AUTO/internal** (pas de factory) |
 | FAIL | BF-FAIL-01…07 | `TestFailureManager` | D8, D16, D16-bis | 6 → 8 | ✅ hook + clés + contrat de sortie gravé (impl étape 8) |
 | LOG | BF-LOG-01…05 | `LogbackConfigurator` | D14, D16-bis, D17 | 6 → 8 | ✅ constantes + scope tranché (`compile` + ArchUnit) |
 | ERR | BF-ERR-01…07 | `QaToolkitException` + 4 sous-types | D18 | 3 (✅) | ✅ figées (sans `throws`) |
