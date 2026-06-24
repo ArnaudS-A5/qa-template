@@ -84,9 +84,12 @@ Domaines fonctionnels : `sync`, `data`, `secret`, `reporting`, `failure`, `log`,
 
 ### 2.3 État d'avancement (rappel)
 
-Signatures (coquilles typées) **figées** pour `sync`, `data`, `secret`, `reporting`, `log`, `exception`.
-`failure` reste à cadrer. **Aucune implémentation** à ce stade : tous les corps réels relèvent de
-l'étape 8. Cette SFD est le contrat que l'étape 8 devra honorer.
+**Gel de l'API prononcé le `2026-06-24`** (fin d'étape 6) : signatures (coquilles typées) **figées** pour
+`sync`, `data`, `secret`, `reporting`, `log`, `exception`, `failure`, ainsi que les **contrats de sortie
+versionnés** (dossier `KO__` D8/D16, format de masquage `Secret` D12). Gel **pré-1.0.0** = marqueur
+d'intention (ajustable si l'étape 8 révèle un vrai besoin, tracé) ; verrou dur japicmp à **1.0.0**
+(étape 10). **Aucune implémentation** à ce stade : tous les corps réels relèvent de l'étape 8. Cette SFD
+est le contrat que l'étape 8 devra honorer.
 
 ---
 

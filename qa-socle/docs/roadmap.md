@@ -24,7 +24,7 @@ SANS implémentation** (coquilles typées).
 | 3 | Stratégie transverse d'erreurs | — (avant 6) | ✅ Fait (D18) |
 | 4 | Configuration & portée/thread-safety des composants | — (avant 6) | ✅ Fait (D19) |
 | 5 | Stratégie de test du socle | — (avant 8) | ✅ Fait (D20) |
-| 6 | Signatures d'API par composant (coquilles typées) + gel de l'API | 1→5 | 🟡 En cours (sync/data/secret/reporting/log signés ; failure, factories, arbitrages API/Logback + gel restent) |
+| 6 | Signatures d'API par composant (coquilles typées) + gel de l'API | 1→5 | ✅ Fait (toutes coquilles signées ; D22 assertions ; **gel API 2026-06-24**) |
 | 7 | Cas sécurité : masquage des secrets | 6 | 🟡 En cours (politique/signatures cadrées ; impl/tests non faits) |
 | 8 | Implémentation, composant par composant (+ tests) | 5→7 | ⬜ À faire |
 | 9 | Validation pilote sur SNAPSHOT/RC + ajustements | 8 | ⬜ À faire |
@@ -141,9 +141,11 @@ non-régression exigée par D6 (étape 2).
 **Objectif** : passer des classes vides aux vrais contrats. Méthodes, paramètres, types de retour,
 exceptions — **sans corps**. Le vrai moment de conception. S'appuie sur 1→5.
 
-**Statut : 🟡 En cours** — *coquilles typées en place pour `sync`, `data`, `secret`, `reporting` et
-`log` ; restent `failure`, les factories `secret`/`reporting` si retenues, l'arbitrage de frontière
-API autour d'`AbstractSyncManager`, l'arbitrage technique Logback `compile`/`runtime`, puis le gel.*
+**Statut : ✅ Fait** — *toutes les coquilles typées en place (`sync`, `data`, `secret`, `reporting`,
+`log`, `failure`), factories tranchées (`DataFiles`, `SecretManagers` ; reporting AUTO sans factory),
+frontière API `sync` (option A) et arbitrage Logback (`compile` + ArchUnit) actés, forme des assertions
+fixée (D22). **Gel de l'API prononcé le 2026-06-24** (cf. dernier point). Les corps restent à écrire à
+l'étape 8.*
 
 - [x] **Factory publique `data`** : `DataFiles` existe comme coquille (`api.data`) et porte le point
       d'accès prévu vers `ExcelFileReaderWriter` / `CsvFileReaderWriter`.
@@ -163,15 +165,17 @@ API autour d'`AbstractSyncManager`, l'arbitrage technique Logback `compile`/`run
       au binding côté consommateur est interdit par une **règle ArchUnit** (D19/α : pas de dépendance à
       `ch.qos.logback..` hors `internal.log`) plutôt que par l'isolation de scope. Application étape 8
       (scope + `Configurator` + resources `logback-socle.xml` / `META-INF/services/...` + règle ArchUnit).
-- [ ] `TestFailureManager` — capture d'échec (**classe simple**, D5 ; cf. **D16** + **D16-bis**) :
+- [x] `TestFailureManager` — capture d'échec (**classe simple**, D5 ; cf. **D16** + **D16-bis**) —
+      **coquille complète** (le corps = écriture des 3 fichiers relève de l'étape 8, comme les autres composants) :
   - [x] activation **native** via ServiceLoader **JUnit** : `TestFailureManager` implémente lui-même
         `TestExecutionListener` (hook + écriture en une classe simple), déclaré dans
         `META-INF/services/...` — **aucun type public, aucune annotation**. D16 corrigée (Serenity ne
         découvre pas les `StepListener` par ServiceLoader).
-  - [ ] **écrire les 3 fichiers en Java** (`ERROR.log`/`FAIL.log` + dump HTML) depuis le **`TestOutcome`
-        Serenity** (`getTestSteps()` + `TestStep.getException()`), en appliquant le masquage des
-        valeurs sensibles — format/nommage identiques sur les 17 projets (cf. **D16-bis**) ; **Logback**
-        ne gère que le *log live*, **Surefire** l'exécution/répertoire ;
+  - [ ] **(corps — étape 8)** **écrire les 3 fichiers en Java** (`ERROR.log`/`FAIL.log` + dump HTML) depuis
+        le **`TestOutcome` Serenity** (`getTestSteps()` + `TestStep.getException()`), en appliquant le masquage
+        des valeurs sensibles — format/nommage identiques sur les 17 projets (cf. **D16-bis**) ; **Logback**
+        ne gère que le *log live*, **Surefire** l'exécution/répertoire ; **+ flush du collecteur soft assert**
+        (D22) ;
   - [x] **clés de config figées** (constantes `TestFailureManager`, défauts inclus), unifiées sous
         `qa.failure.artefacts.*` : `.enabled` (opt-out), `.outputDir`, `.dumpHtml`. Le `{ENV}` du
         nommage `KO__` est lu de l'environnement Serenity actif (`environment`, D19) — pas de clé dédiée ;
@@ -187,8 +191,11 @@ API autour d'`AbstractSyncManager`, l'arbitrage technique Logback `compile`/`run
       `internal`, mais ses méthodes publiques (héritées par `WebSync`/`MobileSync`) sont **gelées** →
       garde-fou japicmp **élargi** à l'étape 10. Façades **sous-classables / méthodes non-`final`** →
       échappatoire « bris de glace » (mode opératoire dans le Javadoc des façades).
-- [ ] **Fixer la date de gel de l'API** une fois toutes les signatures arrêtées — **y compris les
-      signatures de masquage du type `Secret`** (réf. étapes 2 et 7).
+- [x] **Date de gel de l'API : `2026-06-24`.** Toutes les signatures `api.*` sont arrêtées (y compris les
+      signatures de masquage du type `Secret`), de même que les **contrats de sortie versionnés** (dossier
+      `KO__` D8/D16, format de masquage `Secret` D12). **Gel pré-1.0.0 = marqueur d'intention** : ajustable
+      si l'implémentation (étape 8) révèle un vrai besoin, tracé ; le **verrou dur** (japicmp) tombe à
+      **1.0.0** (étape 10, baseline = 1ʳᵉ release).
 
 ---
 
