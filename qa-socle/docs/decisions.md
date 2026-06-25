@@ -234,13 +234,18 @@ Le Git flow est documenté en Markdown pour être consommable par l'agent.
 Le rendu masqué est **figé** ; toute modification ultérieure est un **breaking change** (même statut
 que le contrat de sortie `KO__`, cf. D16) :
 
-- `masked()` / `toString()` → **2 premiers caractères en clair** + masque fixe + **16 hexa (8 octets de
-  tête) du SHA-256** de la valeur. Ex. `Bo******** (sha256:0a1b2c3d4e5f6a7b)`.
+- `masked()` / `toString()` → **2 premiers caractères en clair** + **une étoile par caractère masqué**
+  (`longueur − 2` étoiles → la **longueur du secret est volontairement révélée**) + **16 hexa (8 octets
+  de tête) du SHA-256** de la valeur. Ex. (secret de 8 caractères) `Bo****** (sha256:0a1b2c3d4e5f6a7b)`.
+  *(Amendé le 2026-06-25 : le « masque fixe » initial est remplacé par un masque proportionnel à la
+  longueur — justification dans la décision de sécurité ci-dessous.)*
 - `sha256Prefix()` → les **16 hexa** seuls — pour **comparer** deux secrets sans les révéler.
-- **Décision de sécurité assumée** : révéler les **2 premiers caractères** est un compromis **accepté**
-  (lisibilité / diagnostic à l'œil dans les logs et dumps). Le risque — fuite partielle sur un secret
-  **très court** — est **connu et jugé acceptable** ; la comparaison stricte passe de toute façon par le
-  préfixe SHA-256, jamais par les caractères visibles. Implémentation du masquage : étape 7/8.
+- **Décision de sécurité assumée** : révéler les **2 premiers caractères** **et la longueur** (via le
+  nombre d'étoiles) est un compromis **accepté**. Justification : périmètre **de test** uniquement, secrets
+  gérés par **CyberArk avec rotation** organisée → la fuite de la longueur d'un mot de passe est **sans
+  impact opérationnel**, et le rendu reste lisible pour le diagnostic à l'œil. La comparaison stricte passe
+  de toute façon par le préfixe SHA-256, jamais par les caractères visibles. Masquage **implémenté à
+  l'étape 7**.
 
 ## D13 — Remontée des résultats dans ALM (à venir)
 
@@ -457,8 +462,9 @@ part de la mécanique**, et **comment le consommateur le règle**. À implément
   - À la fin d'un test (`executionFinished`), `TestFailureManager` lit le résultat et, **uniquement en cas d'échec**,
     récupère le `TestOutcome` Serenity
     (`StepEventBus.getEventBus().getBaseStepListener().getCurrentTestOutcome()` → steps + exception)
-    puis délègue à `TestFailureManager#writeArtefacts`. *(L'instant exact de lecture — `executionFinished`
-    JUnit vs `testFinished` Serenity — est à confirmer à l'implémentation, étape 8.)*
+    puis délègue à `TestFailureManager#writeArtefacts`. *(Instant de lecture **validé le 2026-06-25**
+    (spike) : `executionFinished` convient — le `TestOutcome` y est lisible (steps + cause), sur le thread
+    du test, **y compris en parallèle**. Cf. **D22-bis**.)*
 - **Rejet explicite de l'option annotation** (ex. `@ExtendWith(QaFailureExtension.class)`) : une
   annotation **oubliée** dans un projet ne produirait **aucun artefact, sans erreur** → personne ne
   comprendrait l'absence des fichiers de sortie. L'activation automatique supprime ce piège.
@@ -883,11 +889,63 @@ coup), au lieu de tomber sur la première.
 - Piloté par une **clé de config** **`qa.assertions.soft`** (*nom proposé, à confirmer*), **défaut
   `false`** (mode dur).
 - En mode soft (`true`) : `should…` **n'lève pas** ; il **enregistre** l'échec (message + capture
-  éventuelle) dans un collecteur **par test** (`ThreadLocal`) et **continue**. En **fin de test**, le
-  listener **déjà en place** (`TestFailureManager`) **vide le collecteur** : s'il y a au moins un échec
-  soft, le test **échoue** avec le **récapitulatif agrégé** de **toutes** les assertions KO (+ artefacts)
-  — comportement **`assertAll`** (AssertJ/JUnit). **Pas** de mode « warning + vert » (on ne masque jamais
-  une vérification cassée à la CI).
-- **Implémentation à l'étape 8.** Mécanisme exact du « faire échouer en fin de test » (extension JUnit /
-  callback `afterEach` auto-enregistré vs listener) à arrêter à l'impl ; contrainte : **zéro ligne** côté
-  code de test (bascule par la seule clé) et **pas de complexité** ajoutée à l'écriture du Framework.
+  éventuelle) dans un collecteur **par test** (`ThreadLocal`) et **continue**. En **fin de test**,
+  une **extension JUnit Jupiter** (`AfterTestExecutionCallback`) **vide le collecteur et fait échouer**
+  (un listener Platform ne peut pas faire échouer un test — cf. D22-bis) : s'il y a au moins un échec soft,
+  le test **échoue** avec le **récapitulatif agrégé** de **toutes** les assertions KO (+ artefacts) —
+  comportement **`assertAll`** (AssertJ/JUnit). **Pas** de mode « warning + vert » (on ne masque jamais une
+  vérification cassée à la CI).
+- **Implémentation à l'étape 8.** Mécanisme **tranché en D22-bis** (extension `AfterTestExecutionCallback`
+  auto-détectée) ; contrainte : **zéro ligne** côté code de test (bascule par la seule clé) et **pas de
+  complexité** ajoutée à l'écriture du Framework.
+
+---
+
+## D22-bis — Soft-assert : extension Jupiter (pas le listener) + validation du point de lecture (C1/C2)
+
+**Amende D22** (et **confirme D16**). Tranché après un **spike** (2026-06-25) qui a levé deux pièges
+identifiés à la revue du socle (C1 mécanisme soft-assert, C2 point de lecture du `TestOutcome`).
+
+### Constat du spike (empirique)
+
+Un `org.junit.platform.launcher.TestExecutionListener` (couche **plateforme**) reçoit `executionFinished`
+**après** que le verdict du test est scellé (son `status` y est déjà `FAILED`/`SUCCESSFUL`). **Il ne peut
+donc QUE l'observer, pas le changer** → impossible d'y « faire échouer » un test, ce que D22 envisageait à
+tort pour le soft-assert.
+
+### C1 — mécanisme du soft-assert (tranché)
+
+Deux étages JUnit, deux rôles distincts, **aucune dépendance ajoutée** (`junit-jupiter-api` déjà en
+`compile`, `junit-platform-launcher` déjà présent — vérifié par le spike) :
+
+| Acteur | Couche / point d'entrée | Rôle | Activation |
+|---|---|---|---|
+| `should…` (mode soft) | corps du test | **enregistre** l'échec au lieu de lever, puis continue | clé `qa.assertions.soft` |
+| Collecteur `ThreadLocal<List<AssertionError>>` (`internal`) | — | accumule les échecs soft du test courant | — |
+| **Extension** `AfterTestExecutionCallback` (`internal`) | **moteur Jupiter**, juste après le corps, **avant** le scellé du verdict | **draine** le collecteur ; si non vide, **lève** l'agrégat (test KO) ; **vide** le `ThreadLocal` | `META-INF/services/org.junit.jupiter.api.extension.Extension` + `junit.jupiter.extensions.autodetection.enabled=true` (Parent POM, hérité → zéro ligne côté test) |
+| `TestFailureManager` (`TestExecutionListener`) | **plateforme**, après le scellé | **observe** le test KO et **écrit** les 3 fichiers `KO__` | déjà en place (présence du jar) |
+
+- **Coopération** : l'extension **crée** le verdict (échec), le listener **écrit** les artefacts — chacun à
+  son étage, sans recouvrement.
+- **Verdict conditionnel** (point clé) : collecteur **vide** → l'extension **ne fait rien** → test **vert**.
+  KO **si et seulement si** au moins une assertion soft a échoué. Jamais d'échec systématique, jamais
+  d'échec masqué (cohérent avec « pas de warning + vert », D22).
+- **Effet de bord** de l'auto-détection : elle enregistre **toutes** les extensions déclarées en service
+  présentes au classpath, pas seulement celle du socle. Le socle maîtrisant ses dépendances, le risque est
+  jugé **faible et acceptable** (seul coût du « zéro ligne »).
+
+### C2 — point de lecture du `TestOutcome` (validé)
+
+Confirme **D16** : dans `executionFinished`, `TestFailureManager` lit le `TestOutcome` Serenity via
+`StepEventBus.getEventBus().getBaseStepListener().getCurrentTestOutcome()`. Le callback s'exécute **sur le
+thread du test** → le `ThreadLocal` Serenity résout le **bon** outcome (steps + cause d'échec présents),
+**en séquentiel ET en parallèle** (vérifié : 6 tests sur 4 workers `ForkJoinPool`, correspondance
+test↔outcome parfaite, aucun croisement). `getCurrentTestOutcome()` est fiable (`latestTestOutcome()` en
+filet) ; le fork Surefire (JVMs séparées) est encore plus sûr. → l'item « instant de lecture à confirmer »
+de D16 est **clos**.
+
+### Impacts
+
+- **Aucune nouvelle signature publique, aucun impact sur le gel d'API** (mécanique d'étape 8).
+- Implémentation reportée à l'**étape 8** (2 petites classes `internal` + 1 fichier service + 1 paramètre
+  Surefire dans le Parent POM + branchement des `should…`).

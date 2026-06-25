@@ -119,7 +119,7 @@ mais avec une **synchronisation intégrée à chaque méthode**, robuste aux SPA
 | **BF-SYNC-13** | Le driver mobile **doit** être obtenu depuis le `WebDriver` Serenity du thread courant et casté **en interne** en `AppiumDriver` : **aucun type Appium** ne **doit** apparaître dans l'API publique. |
 | **BF-SYNC-14** | La saisie d'une **valeur sensible** **doit** se faire via `type(By, Secret)` : le clair (`secret.value()`) est saisi dans le DOM, mais seul le rendu **masqué** apparaît dans le log d'action. C'est le **seul** point de déballage d'un `Secret` pour la saisie. |
 | **BF-SYNC-15** | Au timeout, l'échec **doit** être traduit en `SyncException` porteuse d'un **message différencié** : « mauvaise page / page non chargée » si l'élément est absent ; « application instable » s'il est présent mais jamais interactable. Ces messages alimentent `TestFailureManager` et l'agent de maintenance (D9). |
-| **BF-SYNC-16** | Le socle **doit** offrir un mode **soft assert** piloté par config (`qa.assertions.soft`, défaut `false`) **sans changer les signatures** (`should…` reste `void`) : en mode soft, les assertions **n'lèvent pas** mais sont **collectées** (par test, `ThreadLocal`) ; en **fin de test**, `TestFailureManager` agrège et **fait échouer** le test avec le récapitulatif de **toutes** les assertions KO (style `assertAll`). Pas de mode « warning + vert ». Bascule par la **seule clé**, zéro ligne côté test. *(D22, impl étape 8)* |
+| **BF-SYNC-16** | Le socle **doit** offrir un mode **soft assert** piloté par config (`qa.assertions.soft`, défaut `false`) **sans changer les signatures** (`should…` reste `void`) : en mode soft, les assertions **n'lèvent pas** mais sont **collectées** (par test, `ThreadLocal`) ; en **fin de test**, une **extension Jupiter** (`AfterTestExecutionCallback`, D22-bis) agrège et **fait échouer** le test avec le récapitulatif de **toutes** les assertions KO (style `assertAll`). Pas de mode « warning + vert ». Bascule par la **seule clé**, zéro ligne côté test. *(D22, impl étape 8)* |
 
 **Règles de gestion** : `fluentWait` est écrit **une seule fois** dans l'abstract, `protected`, jamais
 réimplémenté par les sous-classes (D3 maj). À l'intérieur, l'action délègue à l'API publique Serenity
@@ -205,10 +205,11 @@ les dumps d'échec ou par concaténation accidentelle. **Risque OWASP** isolé (
 | **BF-MASK-05** | Le masquage **doit** être appliqué **en amont de toute écriture**. `TestFailureManager` **doit** appliquer le masquage **à la sérialisation** des `TestStep` (jamais depuis une sortie SLF4J brute). |
 | **BF-MASK-06** | **Aucun secret en clair** ne **doit** apparaître dans les 3 artefacts `KO__…` ni dans le log live. |
 
-**Format de masquage (acté, D12)** : « **2 premiers caractères en clair + masque fixe + 16 hexa de
-SHA-256** » (ex. `Bo******** (sha256:0a1b2c3d4e5f6a7b)`). C'est un **contrat de sortie versionné** (D16).
-Révéler 2 caractères est un **compromis de sécurité assumé** (risque connu sur les secrets très courts,
-jugé acceptable ; la comparaison stricte passe par le préfixe SHA-256).
+**Format de masquage (acté, D12 ; amendé 2026-06-25)** : « **2 premiers caractères en clair + une étoile
+par caractère masqué (longueur révélée) + 16 hexa de SHA-256** » (ex. secret de 8 car. :
+`Bo****** (sha256:0a1b2c3d4e5f6a7b)`). C'est un **contrat de sortie versionné** (D16).
+Révéler 2 caractères **et la longueur** est un **compromis assumé** (périmètre de test, secrets CyberArk
+en rotation → fuite de longueur sans impact ; la comparaison stricte passe par le préfixe SHA-256).
 
 **Critères d'acceptation** (étape 7/8) : test prouvant l'absence de toute occurrence en clair du secret
 dans `ERROR.log`, `FAIL.log`, le dump HTML et la sortie console, y compris en cas de log accidentel.

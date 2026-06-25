@@ -174,8 +174,8 @@ l'étape 8.*
   - [ ] **(corps — étape 8)** **écrire les 3 fichiers en Java** (`ERROR.log`/`FAIL.log` + dump HTML) depuis
         le **`TestOutcome` Serenity** (`getTestSteps()` + `TestStep.getException()`), en appliquant le masquage
         des valeurs sensibles — format/nommage identiques sur les 17 projets (cf. **D16-bis**) ; **Logback**
-        ne gère que le *log live*, **Surefire** l'exécution/répertoire ; **+ flush du collecteur soft assert**
-        (D22) ;
+        ne gère que le *log live*, **Surefire** l'exécution/répertoire ; le **flush + échec** du soft-assert
+        est porté par une **extension Jupiter** (D22-bis), pas par ce listener ;
   - [x] **clés de config figées** (constantes `TestFailureManager`, défauts inclus), unifiées sous
         `qa.failure.artefacts.*` : `.enabled` (opt-out), `.outputDir`, `.dumpHtml`. Le `{ENV}` du
         nommage `KO__` est lu de l'environnement Serenity actif (`environment`, D19) — pas de clé dédiée ;
@@ -206,13 +206,15 @@ son **intégration interne** et ses **tests**. Isolé car risque OWASP. ⚠️ *
 publique ici** : la seule signature concernée (contrat « valeur sensible » du type `Secret`) est
 figée en **étape 6, avant le gel**.
 
-**Statut : 🟡 En cours** — la politique et les signatures publiques sont cadrées ; l'implémentation et
-les tests ne sont pas faits.
+**Statut : 🟡 En cours** — la politique et les signatures sont cadrées ; le **masquage du type `Secret`
+est implémenté et testé** (étape 7). Restent l'**intégration dans `TestFailureManager`** et le test
+« zéro clair » sur les artefacts `KO__`.
 
 - [x] Définir la **règle de masquage** : quoi masquer, comment (**format acté D12** : 2 premiers
       caractères + masque + 16 hexa SHA-256), à quel moment (en amont de toute écriture) — `Secret` / D12 / D16-bis.
-- [ ] Implémenter le **masquage à la source** dans le type `Secret` (`masked()` / `sha256Prefix()` /
-      `toString()`) — **sans changer sa signature publique** (figée en 6).
+- [x] Implémenter le **masquage à la source** dans le type `Secret` (`masked()` / `sha256Prefix()` /
+      `toString()`) — **sans changer sa signature publique** (figée en 6). **Fait** : format D12 +
+      `SecretMaskingTest` (vecteur SHA-256 déterministe), build vert.
 - [ ] Intégrer le masquage dans `TestFailureManager` (`internal`, dumps/logs d'échec).
 - [ ] **Tests** : aucun secret en clair dans les 3 artefacts `KO__` ni dans le log live.
 
@@ -228,6 +230,10 @@ les tests ne sont pas faits.
 - [ ] `WebSync` (cœur : fluentWait + flag JS) + tests comportementaux.
 - [ ] `DataFileManager` (Excel/CSV) + tests.
 - [ ] `TestFailureManager` (depuis le `TestOutcome` Serenity) + tests.
+- [ ] **Soft-assert (D22-bis)** : extension Jupiter `AfterTestExecutionCallback` (`internal`) + collecteur
+      `ThreadLocal` ; `should…` empilent en mode soft ; auto-détection activée dans le Parent POM
+      (`junit.jupiter.extensions.autodetection.enabled=true`). Le listener `TestFailureManager` n'écrit que
+      les artefacts (il ne fait pas échouer).
 - [ ] `LogbackConfigurator` (`internal.log`) implémente `Configurator` + **passer `logback-classic` en
       scope `compile`** (cf. D16-bis) + resources `logback-socle.xml` /
       `META-INF/services/ch.qos.logback.classic.spi.Configurator` (default socle) + test :
