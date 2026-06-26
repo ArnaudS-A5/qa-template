@@ -8,9 +8,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.Normalizer;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Optional;
 
 import net.serenitybdd.model.environment.EnvironmentSpecificConfiguration;
@@ -160,7 +162,11 @@ public class TestFailureManager implements TestExecutionListener {
         if (raw == null || raw.isBlank()) {
             return "unknown";
         }
-        String cleaned = trimUnderscores(collapseToUnderscores(raw));
+        // Translittération ASCII (é->e, à->a, ç->c...) via décomposition NFD + suppression des diacritiques.
+        String ascii = Normalizer.normalize(raw, Normalizer.Form.NFD).replaceAll("\\p{M}", "");
+        // Apostrophes / guillemets supprimés (collage) : "l'écran" -> "lecran".
+        ascii = ascii.replaceAll("['’‘`\"]", "");
+        String cleaned = trimUnderscores(collapseToUnderscores(ascii));
         return cleaned.isEmpty() ? "unknown" : cleaned;
     }
 
@@ -228,7 +234,19 @@ public class TestFailureManager implements TestExecutionListener {
     }
 
     private static Optional<TestStep> failingStep(TestOutcome outcome) {
-        return outcome.getFlattenedTestSteps().stream().filter(TestFailureManager::isFailing).findFirst();
+        return failingLeaf(outcome.getFlattenedTestSteps());
+    }
+
+    /**
+     * Step en échec la plus pertinente : la <b>feuille</b> KO (l'action réellement fautive), pas la step
+     * parente vers laquelle l'échec s'est propagé. On ne garde que les feuilles ({@code !hasChildren()})
+     * et on prend la <b>dernière</b> KO de l'ordre aplati (la plus profonde réellement exécutée).
+     */
+    static Optional<TestStep> failingLeaf(List<TestStep> flattenedSteps) {
+        return flattenedSteps.stream()
+                .filter(step -> !step.hasChildren())
+                .filter(TestFailureManager::isFailing)
+                .reduce((first, last) -> last);
     }
 
     private static String failingStepHtml(TestOutcome outcome) {

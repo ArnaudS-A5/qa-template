@@ -9,7 +9,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
+import net.thucydides.model.domain.TestResult;
+import net.thucydides.model.domain.TestStep;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -30,13 +34,29 @@ class TestFailureArtefactsTest {
 	}
 
 	@Test
-	@DisplayName("sanitize neutralise les caractères interdits sans introduire de __ parasite")
+	@DisplayName("sanitize translittère les accents et neutralise les caractères interdits (pas de __ parasite)")
 	void sanitizeNeutraliseLesCaracteresInterdits() {
 		assertEquals("echecProvoque", TestFailureManager.sanitize("echecProvoque()"));
 		assertEquals("clic_sur_bouton", TestFailureManager.sanitize("clic sur bouton"));
 		assertEquals("a_b_c", TestFailureManager.sanitize("a/b\\c"));
+		assertEquals("Verifier_quon_a_reussi", TestFailureManager.sanitize("Vérifier qu'on a réussi"));
+		assertEquals("Un_echec_de_connexion_est_capture", TestFailureManager.sanitize("Un échec de connexion est capturé"));
 		assertEquals("unknown", TestFailureManager.sanitize(""));
 		assertEquals("unknown", TestFailureManager.sanitize(null));
+	}
+
+	@Test
+	@DisplayName("failingLeaf renvoie la feuille KO (l'action fautive), pas la step parente")
+	void failingLeafRenvoieLaFeuille() {
+		TestStep parent = new TestStep("groupe parent");
+		parent.addChildStep(new TestStep("enfant"));    // a des enfants -> pas une feuille
+		parent.setResult(TestResult.FAILURE);           // échec propagé au parent
+		TestStep leaf = new TestStep("action fautive"); // feuille KO
+		leaf.setResult(TestResult.FAILURE);
+
+		Optional<TestStep> result = TestFailureManager.failingLeaf(List.of(parent, leaf));
+
+		assertEquals("action fautive", result.orElseThrow().getDescription());
 	}
 
 	@Test
