@@ -249,7 +249,18 @@ public class TestFailureManager implements TestExecutionListener {
                 .reduce((first, last) -> last);
     }
 
+    /**
+     * Dump HTML de la step en échec. Priorité au <b>DOM brut</b> capté au {@code stepFailed} par
+     * {@link RawDomCaptureListener} (option A : page rendable telle quelle, driver vivant) ; à défaut,
+     * <b>repli</b> sur la source HTML stockée par Serenity (option C : vue « code » Prism, échappée).
+     */
     private static String failingStepHtml(TestOutcome outcome) {
+        return RawDomCaptureListener.consumeCapturedDom()
+                .orElseGet(() -> failingStepHtmlFromSerenity(outcome));
+    }
+
+    /** Repli (option C) : dernière source HTML stockée par Serenity pour la step en échec. */
+    private static String failingStepHtmlFromSerenity(TestOutcome outcome) {
         return failingStep(outcome)
                 .flatMap(step -> step.getScreenshots().stream().reduce((first, last) -> last))
                 .flatMap(ScreenshotAndHtmlSource::getHtmlSource)
