@@ -4,8 +4,9 @@ Socle d'outils QA custom pour la stack **Selenium Java / Serenity BDD / JUnit 5 
 consommé **comme dépendance Maven** par les ~17 projets de tests de l'équipe
 (Git/Bitbucket, Artifactory JFrog, CI Jenkins gérée par une autre équipe).
 
-> **Statut : squelette en construction.** Les signatures sont en cours de stabilisation ; les corps
-> restent volontairement vides ou neutres avant l'étape d'implémentation.
+> **Statut : API gelée (2026-06-24), implémentation en cours (étape 8).** Les signatures publiques sont
+> figées ; le **masquage `Secret`** et la **capture d'échec** (`TestFailureManager` + capture du DOM brut)
+> sont implémentés et testés. Les autres composants restent des coquilles typées.
 
 ## Sommaire
 
@@ -79,14 +80,14 @@ délégation à l'opération native Selenium/Serenity quand l'élément est rée
 | `sync` | `WebSync`, `MobileSync` | `AbstractSyncManager` | synchronisation robuste (fluentWait + flag JS) |
 | `data` | `DataFileManager` | `AbstractDataFileManager`, `ExcelFileReaderWriter`, `CsvFileReaderWriter` | données de test Excel/CSV (lecture + écriture) |
 | `log` | *(aucun type public — log d'action via SLF4J natif)* | `LogbackConfigurator` *(coquille existante ; resources à venir — D16-bis)* | default Logback (namespace `"qa"`, clé `qa.logger.level`) imposé par la présence du jar, surchargeable ; **pas de façade maison** |
-| `failure` | *(hook à venir, étape 6)* | `TestFailureManager` | artefacts d'échec (logs + dump HTML) |
-| `secret` | `SecretManager`, `Secret` | `CyberArkApiClient` | récupération de secrets au runtime + valeur sensible avec masquage à implémenter (D12) |
+| `failure` | *(aucun type public — activation native par présence du jar)* | `TestFailureManager`, `RawDomCaptureListener` | artefacts d'échec (`ERROR.log`/`FAIL.log` + dump du **DOM brut**) — **implémenté** |
+| `secret` | `SecretManager`, `SecretManagers`, `Secret` | `CyberArkApiClient` | récupération de secrets au runtime (`CyberArkApiClient` — coquille) + valeur sensible `Secret` **au masquage implémenté** (D12) |
 | `reporting` | *(aucun type public — reporting AUTO, D13)* | `ReportingManager`, `AlmApiClient`, `TestExecutionReport`, `ExecutionStatus` | remontée des résultats vers ALM (D13) |
 | `exception` | `QaToolkitException` + `SyncException` / `DataFileException` / `SecretException` / `ReportingException` | — | hiérarchie d'erreurs **unchecked** (D18) ; traduit les exceptions tierces en conservant la `cause` |
 
 Les impls `internal` sont exposées uniquement via des points d'entrée publics quand c'est nécessaire :
-`DataFiles` existe déjà pour `data`; les points d'accès `secret` et `reporting` restent à confirmer
-avant gel de l'API.
+`DataFiles` pour `data` et **`SecretManagers`** pour `secret` (factories publiques) ; `reporting` est
+**AUTO** (listener du socle) → **aucun point d'accès public** (tout le domaine est `internal`, cf. D13/D15).
 
 Sources : [qa-socle/src/main/java/com/example/qa/](qa-socle/src/main/java/com/example/qa/).
 Le contenu réel (signatures puis implémentations) sera intégré selon la

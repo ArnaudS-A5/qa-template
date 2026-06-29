@@ -3,8 +3,10 @@
 Suivi de la séquence de construction du squelette du socle (dépendance Maven consommée par ~17 projets).
 
 **Fil conducteur** : figer les règles du contrat (1→5) → écrire le contrat (6→7) → le remplir et le
-tester (8) → le valider sur un pilote (9) → le protéger et le livrer (10). **Les étapes 1→7 restent
-SANS implémentation** (coquilles typées).
+tester (8) → le valider sur un pilote (9) → le protéger et le livrer (10). L'implémentation a **démarré** :
+le **masquage du type `Secret`** (étape 7) et la **capture d'échec** (`TestFailureManager` + capture du DOM
+brut, composant FAILURE de l'étape 8) sont **implémentés et testés** ; les autres composants restent des
+**coquilles typées**.
 
 ## Légende des statuts
 
@@ -25,8 +27,8 @@ SANS implémentation** (coquilles typées).
 | 4 | Configuration & portée/thread-safety des composants | — (avant 6) | ✅ Fait (D19) |
 | 5 | Stratégie de test du socle | — (avant 8) | ✅ Fait (D20) |
 | 6 | Signatures d'API par composant (coquilles typées) + gel de l'API | 1→5 | ✅ Fait (toutes coquilles signées ; D22 assertions ; **gel API 2026-06-24**) |
-| 7 | Cas sécurité : masquage des secrets | 6 | 🟡 En cours (politique/signatures cadrées ; impl/tests non faits) |
-| 8 | Implémentation, composant par composant (+ tests) | 5→7 | ⬜ À faire |
+| 7 | Cas sécurité : masquage des secrets | 6 | 🟡 En cours (masquage `Secret` **implémenté + testé** ; reste l'intégration/audit dans `TestFailureManager` + test « zéro clair ») |
+| 8 | Implémentation, composant par composant (+ tests) | 5→7 | 🟡 En cours (FAILURE **fait + testé** : artefacts `KO__` + capture DOM brut ; reste sync/data/reporting/secret/log/soft-assert/ArchUnit) |
 | 9 | Validation pilote sur SNAPSHOT/RC + ajustements | 8 | ⬜ À faire |
 | 10 | Garde-fou compat (japicmp/revapi) + version 1.0.0 + doc + généralisation | 9 | ⬜ À faire |
 
@@ -169,13 +171,17 @@ l'étape 8.*
       **coquille complète** (le corps = écriture des 3 fichiers relève de l'étape 8, comme les autres composants) :
   - [x] activation **native** via ServiceLoader **JUnit** : `TestFailureManager` implémente lui-même
         `TestExecutionListener` (hook + écriture en une classe simple), déclaré dans
-        `META-INF/services/...` — **aucun type public, aucune annotation**. D16 corrigée (Serenity ne
-        découvre pas les `StepListener` par ServiceLoader).
-  - [ ] **(corps — étape 8)** **écrire les 3 fichiers en Java** (`ERROR.log`/`FAIL.log` + dump HTML) depuis
-        le **`TestOutcome` Serenity** (`getTestSteps()` + `TestStep.getException()`), en appliquant le masquage
-        des valeurs sensibles — format/nommage identiques sur les 17 projets (cf. **D16-bis**) ; **Logback**
-        ne gère que le *log live*, **Surefire** l'exécution/répertoire ; le **flush + échec** du soft-assert
-        est porté par une **extension Jupiter** (D22-bis), pas par ce listener ;
+        `META-INF/services/...` — **aucun type public, aucune annotation**. (Voir **D16** : Serenity
+        découvre **aussi** un `StepListener` par ServiceLoader, confirmé via `qa-test` — utilisé pour la
+        capture du DOM brut par `RawDomCaptureListener`.)
+  - [x] **(corps — étape 8, fait)** **3 fichiers écrits en Java** (`ERROR.log`/`FAIL.log` + dump HTML) depuis
+        le **`TestOutcome` Serenity** (`getFlattenedTestSteps()` + `getTestFailureCause()`), step en échec = la
+        **feuille KO**, nom de fichier `sanitize` (accents translittérés) — format/nommage identiques sur les 17
+        projets (cf. **D16-bis**). **Dump HTML = DOM brut** capté à l'échec via `RawDomCaptureListener` (option A,
+        cf. **D16**) avec repli sur la source Serenity. Masquage assuré **à la source** (`Secret#toString()`) ; le
+        test « zéro clair » et la fuite du DOM brut restent à traiter (étape 7). **Logback** ne gère que le
+        *log live*, **Surefire** l'exécution/répertoire ; le **flush + échec** du soft-assert est porté par une
+        **extension Jupiter** (D22-bis), pas par ce listener ;
   - [x] **clés de config figées** (constantes `TestFailureManager`, défauts inclus), unifiées sous
         `qa.failure.artefacts.*` : `.enabled` (opt-out), `.outputDir`, `.dumpHtml`. Le `{ENV}` du
         nommage `KO__` est lu de l'environnement Serenity actif (`environment`, D19) — pas de clé dédiée ;
@@ -207,15 +213,19 @@ publique ici** : la seule signature concernée (contrat « valeur sensible » du
 figée en **étape 6, avant le gel**.
 
 **Statut : 🟡 En cours** — la politique et les signatures sont cadrées ; le **masquage du type `Secret`
-est implémenté et testé** (étape 7). Restent l'**intégration dans `TestFailureManager`** et le test
-« zéro clair » sur les artefacts `KO__`.
+est implémenté et testé** (étape 7). `TestFailureManager` est désormais implémenté (étape 8) et s'appuie
+sur le masquage **à la source** (`Secret#toString()` : les descriptions de steps remontées par Serenity
+sont déjà masquées). Restent le **test « zéro clair »** sur les artefacts `KO__` et le traitement de la
+**fuite du DOM brut** — la capture option A (cf. D16) écrit du texte de page arbitraire, **non couvert par
+`Secret`**.
 
 - [x] Définir la **règle de masquage** : quoi masquer, comment (**format acté D12** : 2 premiers
       caractères + masque + 16 hexa SHA-256), à quel moment (en amont de toute écriture) — `Secret` / D12 / D16-bis.
 - [x] Implémenter le **masquage à la source** dans le type `Secret` (`masked()` / `sha256Prefix()` /
       `toString()`) — **sans changer sa signature publique** (figée en 6). **Fait** : format D12 +
       `SecretMaskingTest` (vecteur SHA-256 déterministe), build vert.
-- [ ] Intégrer le masquage dans `TestFailureManager` (`internal`, dumps/logs d'échec).
+- [ ] Garantir le masquage dans `TestFailureManager` (`internal`) : le contenu écrit s'appuie sur le rendu
+      masqué à la source ; **auditer la fuite du DOM brut** (option A) qui échappe à `Secret`.
 - [ ] **Tests** : aucun secret en clair dans les 3 artefacts `KO__` ni dans le log live.
 
 ---
@@ -225,11 +235,17 @@ est implémenté et testé** (étape 7). Restent l'**intégration dans `TestFail
 **Objectif** : remplacer chaque squelette typé par sa logique, avec de vrais tests comportementaux
 (selon la stratégie de l'étape 5) qui remplacent les tests de hiérarchie triviaux actuels.
 
-**Statut : ⬜ À faire** — *première étape AVEC implémentation*
+**Statut : 🟡 En cours** — *première étape AVEC implémentation, **démarrée*** : le composant **FAILURE**
+(`TestFailureManager` + capture du DOM brut `RawDomCaptureListener`) est implémenté et testé. Restent
+`WebSync`, `DataFileManager`, le soft-assert, `LogbackConfigurator`, les garde-fous ArchUnit,
+`CyberArkApiClient` et le reporting AUTO.
 
 - [ ] `WebSync` (cœur : fluentWait + flag JS) + tests comportementaux.
 - [ ] `DataFileManager` (Excel/CSV) + tests.
-- [ ] `TestFailureManager` (depuis le `TestOutcome` Serenity) + tests.
+- [x] `TestFailureManager` (depuis le `TestOutcome` Serenity) + tests — **fait** : artefacts `KO__`
+      (`ERROR.log`/`FAIL.log`/dump HTML), feuille KO, `sanitize` (accents translittérés), **capture du DOM
+      brut à l'échec** via `RawDomCaptureListener` (option A, cf. D16) avec repli sur la source Serenity ;
+      couvert par `TestFailureArtefactsTest`.
 - [ ] **Soft-assert (D22-bis)** : extension Jupiter `AfterTestExecutionCallback` (`internal`) + collecteur
       `ThreadLocal` ; `should…` empilent en mode soft ; auto-détection activée dans le Parent POM
       (`junit.jupiter.extensions.autodetection.enabled=true`). Le listener `TestFailureManager` n'écrit que

@@ -88,8 +88,10 @@ Domaines fonctionnels : `sync`, `data`, `secret`, `reporting`, `failure`, `log`,
 `sync`, `data`, `secret`, `reporting`, `log`, `exception`, `failure`, ainsi que les **contrats de sortie
 versionnés** (dossier `KO__` D8/D16, format de masquage `Secret` D12). Gel **pré-1.0.0** = marqueur
 d'intention (ajustable si l'étape 8 révèle un vrai besoin, tracé) ; verrou dur japicmp à **1.0.0**
-(étape 10). **Aucune implémentation** à ce stade : tous les corps réels relèvent de l'étape 8. Cette SFD
-est le contrat que l'étape 8 devra honorer.
+(étape 10). **Implémentation (étape 8) démarrée** : le **masquage du type `Secret`** (domaine MASK) et la
+**capture d'échec** (domaine FAIL — `TestFailureManager` + capture du DOM brut `RawDomCaptureListener`)
+sont **implémentés et testés** ; les autres composants (`sync`, `data`, retrait de secret, `reporting`,
+`log`) restent des coquilles typées. Cette SFD est le contrat que l'étape 8 honore composant par composant.
 
 ---
 
@@ -184,8 +186,8 @@ D12, D15, D18, D19.
 requête (`SecretRequest`) a été abandonné (D12 maj) : l'identification par `name` ou `(safe, object)`
 suffit. Erreurs traduites en `SecretException` **sans jamais exposer le secret** dans le message (D18).
 
-**⚠️ Point ouvert** : factory publique `secret` — confirmer si un point d'accès `api` est nécessaire
-pour masquer l'impl `internal`, ou si l'injection suffit (roadmap étape 6, D15).
+**✅ Clos** : la factory publique **`SecretManagers`** (`api.secret`, `get()` neutre) est le point d'accès
+retenu (D15) ; elle cache l'impl `CyberArkApiClient` (`internal`). Reste à brancher le corps à l'étape 8.
 
 ---
 
@@ -210,6 +212,11 @@ par caractère masqué (longueur révélée) + 16 hexa de SHA-256** » (ex. secr
 `Bo****** (sha256:0a1b2c3d4e5f6a7b)`). C'est un **contrat de sortie versionné** (D16).
 Révéler 2 caractères **et la longueur** est un **compromis assumé** (périmètre de test, secrets CyberArk
 en rotation → fuite de longueur sans impact ; la comparaison stricte passe par le préfixe SHA-256).
+
+**État** : `Secret` est **implémenté et testé** (`SecretMaskingTest`, format D12). `TestFailureManager`
+écrit le contenu en s'appuyant sur le masquage **à la source** (`toString()`, descriptions de steps déjà
+masquées). **Reste** (étape 7) : le test « zéro clair » (BF-MASK-06) et le traitement de la **fuite du DOM
+brut** — la capture option A (D16) écrit du **texte de page arbitraire**, **non couvert par `Secret`**.
 
 **Critères d'acceptation** (étape 7/8) : test prouvant l'absence de toute occurrence en clair du secret
 dans `ERROR.log`, `FAIL.log`, le dump HTML et la sortie console, y compris en cas de log accidentel.
@@ -246,24 +253,27 @@ mapping à **2 colonnes** (adresse test Serenity ↔ adresse instance de test AL
 
 **Objectif** : produire automatiquement, pour **chaque test KO**, un jeu d'artefacts de diagnostic
 **uniforme sur les 17 projets**, consommé par l'agent `qa-maintenance` et la récupération CI.
-**Composant** : `TestFailureManager` (`internal.failure`). **Réf.** : D8, D16, D16-bis, D9.
+**Composants** : `TestFailureManager`, `RawDomCaptureListener` (`internal.failure`). **Réf.** : D8, D16, D16-bis, D9.
 
 | ID | Besoin fonctionnel |
 |---|---|
-| **BF-FAIL-01** | Pour un test **KO uniquement**, le socle **doit** créer un dossier `KO__{ENV}__{NomDuTest}__{ts}/` (délimiteur `__`) contenant **toujours** trois fichiers : `ERROR.log` (synthétique), `FAIL.log` (trace complète) et un **dump HTML** de la step en erreur. **Aucun artefact** pour un test OK. |
-| **BF-FAIL-02** | Le mécanisme **doit** s'activer **nativement** par la seule présence du jar, via le **ServiceLoader de JUnit Platform** : `TestFailureManager` (`internal.failure`) implémente lui-même `TestExecutionListener`, déclaré dans `META-INF/services/org.junit.platform.launcher.TestExecutionListener`, auto-enregistré par le `Launcher` que Surefire lance. **Aucun type public, aucune annotation, aucun import** côté consommateur. *(Serenity ne découvre pas les `StepListener` par ServiceLoader — cf. D16 corrigée.)* |
+| **BF-FAIL-01** | Pour un test **KO uniquement**, le socle **doit** créer un dossier `KO__{ENV}__{NomDuTest}__{ts}/` (délimiteur `__`) contenant **toujours** trois fichiers : `ERROR.log` (synthétique), `FAIL.log` (trace complète) et un **dump HTML** de la step en erreur (cf. BF-FAIL-08). **Aucun artefact** pour un test OK. |
+| **BF-FAIL-02** | Le mécanisme **doit** s'activer **nativement** par la seule présence du jar, via le **ServiceLoader de JUnit Platform** : `TestFailureManager` (`internal.failure`) implémente lui-même `TestExecutionListener`, déclaré dans `META-INF/services/org.junit.platform.launcher.TestExecutionListener`, auto-enregistré par le `Launcher` que Surefire lance. **Aucun type public, aucune annotation, aucun import** côté consommateur. *(Confirmé via `qa-test` : Serenity découvre **aussi** un `StepListener` déclaré en services, utilisé pour la capture du DOM brut — BF-FAIL-08 ; cf. D16.)* |
 | **BF-FAIL-03** | L'option « annotation » (ex. `@ExtendWith(...)`) est **explicitement rejetée** : une annotation oubliée produirait une absence silencieuse d'artefacts. L'opt-out **doit** se faire par configuration, pas par omission de code. |
 | **BF-FAIL-04** | Les contenus **doivent** être bâtis **en Java** à partir du `TestOutcome` Serenity (`getTestSteps()` + `TestStep.getException()`/`getErrorMessage()`), **sans buffer maison**, en appliquant le **masquage** (BF-MASK-05). |
 | **BF-FAIL-05** | Le mécanisme **doit** être paramétrable par clés de config **toutes dotées d'une valeur par défaut** (figées en constantes `TestFailureManager`), unifiées sous `qa.failure.artefacts.*` : `.enabled` (`true`, opt-out), `.outputDir` (`target/qa-results`), `.dumpHtml` (`true`). Le `{ENV}` du nommage `KO__` **n'est pas une clé du socle** : il est lu de l'**environnement Serenity actif** (propriété `environment`, D19) — source unique. |
 | **BF-FAIL-06** | Le **format de sortie** (emplacement, nommage `KO__…` à délimiteur `__`, trois fichiers `ERROR.log`/`FAIL.log`/dump HTML) est un **contrat versionné gravé** (D8) : l'implémentation interne peut changer librement, mais **changer le format est un breaking change** (SemVer). |
 | **BF-FAIL-07** | La répartition des responsabilités **doit** être respectée : **Surefire** = exécution/répertoire/parallélisme ; **Serenity** = historique des steps ; **Logback** = log live ; **`TestFailureManager`** = détection KO + collecte + dump HTML + nommage + écriture des 3 fichiers + masquage. |
+| **BF-FAIL-08** | Le **dump HTML doit être un DOM rendable**, pas la vue « rapport » de Serenity (markup échappé pour Prism). Le DOM brut **doit** être capté **au moment de l'échec de la step** (`StepListener#stepFailed`, driver vivant) par `RawDomCaptureListener`, mémorisé en `ThreadLocal` (sûr en parallèle), puis **consommé** par `TestFailureManager` dans `executionFinished`. **Repli** : si aucun DOM brut n'est disponible, retomber sur la source HTML stockée par Serenity. La step retenue **doit** être la **feuille KO** (l'action fautive), pas la step parente. *(Option A, D16.)* |
 
 **Critères d'acceptation** (étape 8) : un test KO produit exactement les 3 fichiers au bon emplacement,
 nommés selon D8, masqués, indépendamment de tout `logback.xml` local ; un test OK ne produit rien ;
 deux échecs simultanés (parallèle) n'entrent pas en collision (chemins uniques).
 
-**⚠️ Point ouvert (étape 6)** : figer les **noms exacts** des clés + valeurs par défaut et **graver le
-contrat de sortie** ; le composant est aujourd'hui une coquille vide (aucun type public à geler).
+**État** : composant **implémenté et testé** (`TestFailureArtefactsTest` : nommage, `sanitize`,
+`failingLeaf`, écriture des 3 fichiers ; capture du DOM brut via `RawDomCaptureListener`).
+**✅ Point ouvert clos** : noms de clés + défauts figés (constantes `TestFailureManager`) et contrat de
+sortie gravé (D8). **Reste (étape 7)** : test « zéro clair » + audit de la fuite du DOM brut (BF-MASK-06).
 
 ---
 
@@ -382,9 +392,9 @@ D21, D7, roadmap étapes 2 et 10.
 | SYNC | BF-SYNC-01…16 | `WebSync`, `MobileSync`, `AbstractSyncManager`, `SwipeDirection` | D3, D4, D22 | 6 → 8 | ✅ figées (soft assert = comportement étape 8) |
 | DATA | BF-DATA-01…09 | `DataFileManager`, `DataFiles`, `Abstract…`, `Excel`/`Csv…` | D5 | 6 → 8 | ✅ figées |
 | SECRET | BF-SEC-01…06 | `SecretManager`, **`SecretManagers`** (factory), `CyberArkApiClient` | D12 | 6 → 8 | ✅ figées + factory |
-| MASK | BF-MASK-01…06 | `Secret` (+ `TestFailureManager`) | D12, D14, D16-bis | 6/7 → 8 | ✅ signatures + format acté (D12) |
+| MASK | BF-MASK-01…06 | `Secret` (+ `TestFailureManager`) | D12, D14, D16-bis | 6/7 → 8 | ✅ signatures + format D12 + **masquage implémenté & testé** |
 | REPORTING | BF-REP-01…10 | `ReportingManager`, `TestExecutionReport`, `ExecutionStatus`, `AlmApiClient` (tous **`internal`**) | D13 | 6 → 8 | ✅ figées + **AUTO/internal** (pas de factory) |
-| FAIL | BF-FAIL-01…07 | `TestFailureManager` | D8, D16, D16-bis | 6 → 8 | ✅ hook + clés + contrat de sortie gravé (impl étape 8) |
+| FAIL | BF-FAIL-01…08 | `TestFailureManager`, `RawDomCaptureListener` | D8, D16, D16-bis | 6 → 8 | ✅ hook + clés + contrat gravé ; **impl + tests faits** (DOM brut option A) |
 | LOG | BF-LOG-01…05 | `LogbackConfigurator` | D14, D16-bis, D17 | 6 → 8 | ✅ constantes + scope tranché (`compile` + ArchUnit) |
 | ERR | BF-ERR-01…07 | `QaToolkitException` + 4 sous-types | D18 | 3 (✅) | ✅ figées (sans `throws`) |
 | CONF | BF-CONF-01…04 | (transverse, Serenity) | D19 | 4 (✅) → 8 | n/a |

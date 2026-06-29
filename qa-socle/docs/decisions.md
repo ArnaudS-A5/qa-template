@@ -180,7 +180,7 @@ Le Git flow est documenté en Markdown pour être consommable par l'agent.
   - `interface SecretManager` — contrat **neutre** : `Secret getSecret(String name)` (nom logique,
     cas courant) et `Secret getSecret(String safe, String object)` (cas multi-coffre piloté depuis le
     code). Seule dépendance des projets appelants ; retourne un `Secret` (contrat de valeur sensible,
-    masquage à implémenter en étape 7), jamais un `String` nu.
+    masquage implémenté en étape 7), jamais un `String` nu.
   - `CyberArkApiClient implements SecretManager` — implémentation concrète : reconstruction de l'URL
     de l'API REST CyberArk à partir des paramètres, appel HTTP, extraction du mot de passe de la
     charge JSON retournée.
@@ -354,7 +354,7 @@ La classe avait été créée comme **façade SLF4J** pour porter trois besoins.
    `TestFailureManager` lit **directement** ces structures (même principe que la réutilisation de
    `WebElementFacade`). Pas de buffer maison.
 2. **Masquage des secrets** → **déplacé** : porté par **prévention à la source** via le type
-   `Secret` (`api.secret`, signatures posées ; implémentation du masquage en étape 7) + application
+   `Secret` (`api.secret`, signatures posées ; masquage implémenté en étape 7) + application
    du masquage par `TestFailureManager` à la sérialisation des `TestStep`. Plus besoin d'un point
    d'interception dans un logger.
 3. **Log d'action de synchro en live** (dernier rôle restant) → ne justifie **pas** une classe : une
@@ -398,7 +398,7 @@ Frontière entre le **contrat public** (consommé par les ~17 projets) et l'**in
 | `SecretManager` | `api.secret` | interface = contrat |
 | `SecretManagers` | `api.secret` | **factory publique** : seul accès au `SecretManager`, cache `CyberArkApiClient` (idiome JDK `Executors`) |
 | `ReportingManager`, `TestExecutionReport`, `ExecutionStatus` | `internal.reporting` | reporting **AUTO** (listener du socle) → **aucun type public** ; `ReportingManager` reste le **seam de swap** interne (D13) |
-| `Secret` | `api.secret` | type « valeur sensible » manipulé par le consommateur ; signatures de masquage posées, corps à fournir en étape 7/8 |
+| `Secret` | `api.secret` | type « valeur sensible » manipulé par le consommateur ; **masquage implémenté** (étape 7, format D12, `SecretMaskingTest`) |
 | `QaToolkitException` + `SyncException` / `DataFileException` / `SecretException` / `ReportingException` | `api.exception` | hiérarchie d'erreurs **publique** (contrat), unchecked — cf. D18 ; dans le périmètre japicmp (étape 10) |
 | `AbstractSyncManager` | `internal.sync` | moteur, extension non prévue |
 | `AbstractDataFileManager` | `internal.data` | code commun interne |
@@ -406,6 +406,7 @@ Frontière entre le **contrat public** (consommé par les ~17 projets) et l'**in
 | `CyberArkApiClient` | `internal.secret` | impl cachée derrière `SecretManager` |
 | `AlmApiClient` | `internal.reporting` | impl cachée derrière `ReportingManager` |
 | `TestFailureManager` | `internal.failure` | moteur activé par un **hook natif auto-découvert** (cf. D16) ; **aucun type public, aucune annotation**, jamais référencé par le consommateur |
+| `RawDomCaptureListener` | `internal.failure` | `StepListener` Serenity auto-découvert (cf. D16) qui capte le **DOM brut** à l'échec ; **aucun type public**, jamais référencé par le consommateur |
 | `LogbackConfigurator` *(à venir, étape 6/8)* | `internal.log` | mécanisme Logback **auto-activé** (ServiceLoader), **aucun type public**, jamais référencé par le consommateur (cf. D16-bis) |
 
 ### Conséquences
@@ -444,7 +445,9 @@ par `By`) d'`AbstractSyncManager` (`internal`). Choix retenu (option A, après a
 ## D16 — Capture d'échec : activation native + artefacts écrits par le socle (roadmap étape 6)
 
 Comment `TestFailureManager` (package `internal.failure`) est **déclenché**, **qui porte quelle
-part de la mécanique**, et **comment le consommateur le règle**. À implémenter à l'étape 6.
+part de la mécanique**, et **comment le consommateur le règle**. **Implémenté** (étape 8) : activation
+native + écriture des 3 fichiers depuis le `TestOutcome` Serenity + **capture du DOM brut** à l'échec
+(cf. sous-sections ci-dessous, mises à jour au fil de l'implémentation).
 
 ### Activation : native et invisible (option A, sans annotation)
 
@@ -454,11 +457,15 @@ part de la mécanique**, et **comment le consommateur le règle**. À implément
   `TestExecutionListener` (hook + écriture en une seule classe simple). Le `Launcher` JUnit
   auto-enregistre ce listener — c'est le moteur que **Surefire** lance à chaque `mvn test`/`verify`
   (local et CI), et c'est exactement ainsi que **serenity-junit5** s'active lui-même.
-  - ⚠️ **Correction (vérifié sur Serenity 4.2.22)** : la version initiale de D16 parlait d'un
-    **ServiceLoader d'un `StepListener` Serenity** — **inexact**. Serenity **ne découvre pas** les
-    `StepListener` par ServiceLoader (un `META-INF/services/...StepListener` serait **ignoré**) ; ils
-    s'enregistrent **programmatiquement** (`StepEventBus.getEventBus().registerListener(...)`). Le seul
-    service auto-découvert par présence du jar dans cette stack est le `TestExecutionListener` JUnit.
+  - ✅ **Mise à jour (confirmé empiriquement via le projet consommateur `qa-test`)** : Serenity **découvre
+    bien** un `StepListener` déclaré en `META-INF/services/net.thucydides.model.steps.StepListener` par la
+    seule présence du jar. La « correction » antérieure de D16 (qui affirmait l'inverse, sur la foi d'une
+    lecture statique) est donc **caduque** : à l'exécution, le DOM brut est effectivement capté. **Deux**
+    services sont ainsi auto-découverts par la présence du jar `qa-socle` : le `TestExecutionListener`
+    **JUnit Platform** (`TestFailureManager`, qui écrit les artefacts dans `executionFinished`) **et** le
+    `StepListener` **Serenity** (`RawDomCaptureListener`, qui capte le DOM brut à l'échec — cf. sous-section
+    « Source du dump HTML » ci-dessous). Les deux restent `internal`, sans annotation ni import côté
+    consommateur.
   - À la fin d'un test (`executionFinished`), `TestFailureManager` lit le résultat et, **uniquement en cas d'échec**,
     récupère le `TestOutcome` Serenity
     (`StepEventBus.getEventBus().getBaseStepListener().getCurrentTestOutcome()` → steps + exception)
@@ -471,6 +478,32 @@ part de la mécanique**, et **comment le consommateur le règle**. À implément
 - Conséquence : **aucun type public**, **aucune annotation**, **aucun `import`** côté consommateur.
   `TestFailureManager` et son listener restent entièrement `internal` (cohérent avec D15).
 
+### Source du dump HTML : DOM brut capté à l'échec (capture « option A »)
+
+> Mise à jour issue du retour terrain `qa-test`. **Ne pas confondre** avec l'« option A » de l'activation
+> ci-dessus (native, sans annotation) : il s'agit ici du choix de **source** pour le fichier HTML (A/B/C).
+
+- **Problème constaté** : `ScreenshotAndHtmlSource.getHtmlSource()` (lu dans `executionFinished`) pointe sur
+  la **vue « rapport » de Serenity** — un markup **HTML-échappé** dans un `<pre><code class='language-html'>`
+  destiné à Prism.js. Ouvert seul dans un navigateur, on voit le **texte du markup**, pas la page rendue
+  (les assets `prism/*` relatifs manquent).
+- **Choix retenu — option A (DOM brut, recommandée)** : capter `driver.getPageSource()` **au moment précis
+  de l'échec de la step** (`stepFailed`), tant que le **driver est encore vivant** — il l'est pendant
+  l'exécution, plus forcément dans `executionFinished`. Porté par **`RawDomCaptureListener`** (un
+  `StepListener` Serenity, `internal.failure`), qui mémorise le DOM dans un `ThreadLocal<String>` (un par
+  thread de test → sûr en parallèle). `TestFailureManager`, dans `executionFinished` (même thread, D22-bis),
+  **consomme** cette valeur via `consumeCapturedDom()` (lecture + purge, pas de fuite inter-tests).
+- **Repli — option C** : si aucun DOM brut n'a été capté (driver absent/fermé, capture en échec), on
+  retombe sur la **source HTML stockée par Serenity** (vue Prism échappée). Robuste par construction : la
+  capture ne lève jamais, elle se contente de ne rien mémoriser.
+- *(Option B — capter le DOM directement dans la couche d'extraction de `executionFinished` — écartée : le
+  driver y est souvent déjà fermé ; A garantit un DOM rendable.)*
+- **Nommage du fichier** : la step en échec retenue est la **feuille KO** (`failingLeaf` : dernière feuille
+  en échec de l'ordre aplati), pas la step parente vers laquelle l'échec s'est propagé.
+- **`sanitize`** : les accents sont **translittérés** (décomposition NFD + suppression des diacritiques :
+  `é→e`, `à→a`…), apostrophes/guillemets supprimés, le résidu non sûr réduit à `_` — `Vérifier qu'on a
+  réussi` → `Verifier_quon_a_reussi` (et non plus `V_rifier…`).
+
 ### Répartition de la mécanique (la classe ne porte PAS tout)
 
 On s'appuie au maximum sur ce qui existe **nativement** dans la stack ; `TestFailureManager` reste un
@@ -479,9 +512,10 @@ On s'appuie au maximum sur ce qui existe **nativement** dans la stack ; `TestFai
 | Responsabilité | Porté par | Pourquoi |
 |---|---|---|
 | Exécution, répertoire de travail, propriétés système, parallélisme | **Maven Surefire** | c'est lui qui lance les tests et fixe l'environnement |
-| Détection de l'échec + collecte des steps + déclenchement du dump HTML + nommage du dossier `KO__` | **`TestFailureManager`** (mince) | logique spécifique au socle, non couverte nativement |
-| Écriture des 3 fichiers `ERROR_` / `FAIL_` / HTML, format et séparation des contenus | **`TestFailureManager` en Java** | contrat de sortie identique sur les 17 projets, indépendant d'un `logback.xml` local |
-| Historique des steps + erreur (source du `FAIL_*.log`/`ERROR_*.log`) | **Serenity** (`TestOutcome`/`TestStep`) | déjà fourni nativement — lu par `TestFailureManager`, pas de buffer maison (cf. D14 corrigé) |
+| Détection de l'échec + collecte des steps + nommage du dossier `KO__` + écriture | **`TestFailureManager`** (mince) | logique spécifique au socle, non couverte nativement |
+| Capture du **DOM brut** au moment de l'échec (driver vivant), mémorisé en `ThreadLocal` | **`RawDomCaptureListener`** (`StepListener` Serenity) | le DOM rendable n'est disponible qu'au `stepFailed`, avant fermeture du driver (option A) |
+| Écriture des 3 fichiers `ERROR.log` / `FAIL.log` / dump HTML, format et séparation des contenus | **`TestFailureManager` en Java** | contrat de sortie identique sur les 17 projets, indépendant d'un `logback.xml` local |
+| Historique des steps + erreur (source de `FAIL.log`/`ERROR.log`) | **Serenity** (`TestOutcome`/`TestStep`) | déjà fourni nativement — lu par `TestFailureManager`, pas de buffer maison (cf. D14 corrigé) |
 | Log live pendant le run | **Logback** | rôle natif du logging ; le default socle est porté par `LogbackConfigurator` / D16-bis |
 
 > Principe : tout ce qui est **déjà fourni nativement** (cycle de test Serenity, lancement Surefire,
@@ -601,7 +635,7 @@ vérifiée au build.
 | Responsabilité | Porté par | Avant (D16) | **Après (D16-bis, corrigé étape 6)** |
 |---|---|---|---|
 | Historique des steps + erreur (source FAIL_/ERROR_) | `QaLogger` (buffer ThreadLocal) | `QaLogger` | **Serenity** — `TestOutcome.getTestSteps()` + `TestStep.getException()`, lus par `TestFailureManager` (plus de buffer maison) |
-| Masquage secrets avant écriture | `QaLogger` (amont) | — | **Type `Secret`** (signatures posées, impl étape 7) **+ `TestFailureManager`** (à la sérialisation des `TestStep`) — plus de `QaLogger` |
+| Masquage secrets avant écriture | `QaLogger` (amont) | — | **Type `Secret`** (masquage implémenté, étape 7) **+ `TestFailureManager`** (masquage à la source, `toString()`) — plus de `QaLogger` |
 | Écriture des 3 fichiers (`ERROR_`, `FAIL_`, HTML) | Logback appenders | Logback appenders | **TestFailureManager en Java** (depuis le `TestOutcome` Serenity, avec masquage à la sérialisation) |
 | Format / séparation ERROR_/FAIL_ | Logback config | Logback config | **TestFailureManager** (codé en Java, identique partout) |
 | Log live (console/fichier pendant le run) | **Logback (config du consommateur)** | Logback | **Logback** — *default fourni par le socle* (`Configurator` ServiceLoader, cf. ci-dessous), **surchargeable** par un `logback.xml` local |

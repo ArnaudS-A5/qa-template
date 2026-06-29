@@ -173,29 +173,29 @@ réimplémenté). C'est exactement ce que la doctrine impose.
 
 ### 5.2 Points faibles (non bloquants — à corriger au fil de l'eau)
 
-| # | Point faible | Correction |
-|---|---|---|
-| W1 | `AlmApiClient` Javadoc dit ALM **« ~18.4 »** alors que D13/README ont acté **v24** | Aligner le Javadoc sur v24 |
-| W2 | **README** liste `ReportingManager` en colonne **« api (public) »** alors qu'il est **internal** (D13/D15) | Corriger le tableau README (sinon induit l'équipe en erreur) |
-| W3 | `AlmApiClient` Javadoc mode-fichier (« nom qualifié de la classe ») diverge de D13 (mapping **2 colonnes** test Serenity ↔ instance ALM) | Aligner sur D13 |
-| W4 | Répertoire **`api/reporting` vide** (vestige : tout reporting est internal) | Supprimer le dossier |
-| W5 | `sfd.md` ligne 1 : coquille `tell#` en tête de titre | Nettoyer |
-| W6 | Aucun **exemple `serenity.conf`/`serenity.properties`** fourni pour les consommateurs | Ajouter un fichier d'exemple commenté (aide à l'adoption, équipe peu mature) |
-| W7 | POM commente encore `logback-classic` « runtime… sans polluer compile » alors que la direction actée (D16-bis) est **compile** | Le commentaire doit refléter le basculement prévu (cf. P8) |
+| # | Point faible | Correction | Statut |
+|---|---|---|---|
+| W1 | `AlmApiClient` Javadoc dit ALM **« ~18.4 »** alors que D13/README ont acté **v24** | Aligner le Javadoc sur v24 | ✅ Terminé |
+| W2 | **README** liste `ReportingManager` en colonne **« api (public) »** alors qu'il est **internal** (D13/D15) | Corriger le tableau README (sinon induit l'équipe en erreur) | ✅ Terminé |
+| W3 | `AlmApiClient` Javadoc mode-fichier (« nom qualifié de la classe ») diverge de D13 (mapping **2 colonnes** test Serenity ↔ instance ALM) | Aligner sur D13 | ✅ Terminé |
+| W4 | Répertoire **`api/reporting` vide** (vestige : tout reporting est internal) | Supprimer le dossier | ✅ Terminé |
+| W5 | `sfd.md` ligne 1 : coquille `tell#` en tête de titre | Nettoyer | ✅ Terminé |
+| W6 | Aucun **exemple `serenity.conf`/`serenity.properties`** fourni pour les consommateurs | Ajouter un fichier d'exemple commenté (aide à l'adoption, équipe peu mature) | ✅ Terminé |
+| W7 | POM commente encore `logback-classic` « runtime… sans polluer compile » alors que la direction actée (D16-bis) est **compile** | Le commentaire doit refléter le basculement prévu (cf. P8) | ✅ Terminé |
 
 ### 5.3 Points « ultra-critiques » = pièges d'implémentation à désamorcer AVANT l'étape 8
 
 > Aucun n'est un bug du squelette actuel. Ce sont des **chausse-trappes** qui, si on les découvre en
 > codant, peuvent bloquer ou faire perdre des jours. Détail et « faire / ne pas faire » en §6.
 
-| # | Risque | Gravité |
-|---|---|---|
-| C1 | **Soft-assert (D22) impossible à faire échouer un test depuis un `TestExecutionListener`** : ce hook **observe**, il ne **vote** pas le verdict | 🔴 Bloquant si non anticipé |
-| C2 | **Lecture du `TestOutcome` Serenity depuis le listener JUnit** : `StepEventBus` est lié au thread du test ; en parallèle / au mauvais instant, l'outcome peut être absent | 🔴 Make-or-break de tout le domaine FAILURE |
-| C3 | ~~**Collision de nom `TestExecutionResult`** (JUnit vs socle `internal.reporting`)~~ — ✅ **résolu** : type socle renommé `TestExecutionReport` (2026-06-25) | ✅ Levé |
-| C4 | **Messages différenciés de synchro** (« mauvaise page » / « application instable ») = **contrat de fait** consommé par `qa-maintenance` (D9) | 🔴 Si écrits en texte libre, la classification d'échec casse silencieusement |
-| C5 | **Second listener (reporting AUTO) à enregistrer dans le MÊME fichier services** | 🟠 Oubli ⇒ no-op silencieux (le piège que D16 voulait éviter) |
-| C6 | **Scope Logback `runtime`→`compile` + règle ArchUnit = un duo indissociable** | 🟠 Basculer le scope sans le garde-fou expose le binding aux 17 projets |
+| # | Risque | Gravité | Statut |
+|---|---|---|---|
+| C1 | **Soft-assert (D22) impossible à faire échouer un test depuis un `TestExecutionListener`** : ce hook **observe**, il ne **vote** pas le verdict | 🔴 Bloquant si non anticipé |  |
+| C2 | **Lecture du `TestOutcome` Serenity depuis le listener JUnit** : `StepEventBus` est lié au thread du test ; en parallèle / au mauvais instant, l'outcome peut être absent | 🔴 Make-or-break de tout le domaine FAILURE | ✅ Terminé |
+| C3 | ~~**Collision de nom `TestExecutionResult`** (JUnit vs socle `internal.reporting`)~~ — ✅ **résolu** : type socle renommé `TestExecutionReport` (2026-06-25) | ✅ Levé | ✅ Terminé |
+| C4 | **Messages différenciés de synchro** (« mauvaise page » / « application instable ») = **contrat de fait** consommé par `qa-maintenance` (D9) | 🔴 Si écrits en texte libre, la classification d'échec casse silencieusement |  |
+| C5 | **Second listener (reporting AUTO) à enregistrer dans le MÊME fichier services** | 🟠 Oubli ⇒ no-op silencieux (le piège que D16 voulait éviter) |  |
+| C6 | **Scope Logback `runtime`→`compile` + règle ArchUnit = un duo indissociable** | 🟠 Basculer le scope sans le garde-fou expose le binding aux 17 projets |  |
 
 ---
 
@@ -305,3 +305,40 @@ des 17 projets.
 - La structure **n'a pas besoin d'être retouchée** avant l'étape 8 : packages, visibilités, héritage,
   modificateurs et signatures sont sains. Les actions sont **comportementales** (impl) et **éditoriales**
   (doc), pas structurelles.
+
+---
+
+## 9. Tableau de suivi de l'implémentation (étapes 8 → 10)
+
+> Ordre = checklist §7. Statut : ✅ Terminé · 🟡 En cours · ⬜ Pas fait. La colonne **« Vigilance
+> respectée ? »** reste **vide** tant que l'élément n'est pas implémenté ; elle sera remplie (✓ / 🔴)
+> lors d'une **revue finale**. Mise à jour au fil de l'avancement.
+
+**Préalable — ne pas confondre trois choses distinctes autour du « masquage » :**
+
+| | Quoi | État |
+|---|---|---|
+| a) | **Capture des sources (DOM)** — `RawDomCaptureListener`, écrit le `.html` | ✅ fait/commité |
+| b) | **Le type `Secret` et son masquage** (`masked()` = 2 car. + étoiles + sha256) | ✅ fait/testé |
+| c) | **Intégrer le masquage *dans* `TestFailureManager`** (aucun secret en clair dans `ERROR.log`/`FAIL.log`/dump) | ⬜ pas fait |
+
+> ⚠️ **(a) et (c) sont en tension** : le DOM brut de l'option A est du **texte de page arbitraire** ; un
+> token / champ caché / clé JS peut s'y trouver **en clair**, et `Secret` ne couvre que ce qui passe par
+> lui. La tâche (c) — ligne 9 ci-dessous — doit traiter explicitement cette fuite potentielle.
+
+| # | Élément | Statut | ⚠️ Point ultra-critique | Vigilance respectée ? |
+|---|---|---|---|---|
+| 1 | FAILURE — lecture du `TestOutcome` au bon thread (fondation du domaine) | ✅ Terminé | **C2** : outcome lié au thread du test, absent en parallèle si mal lu |  |
+| 2 | FAILURE — capture d'échec : 3 fichiers, feuille KO, `sanitize`, **DOM brut (option A)** | ✅ Terminé (DOM brut **confirmé via `qa-test`**) | **C2** (pont ThreadLocal même thread) + **DOM brut = texte non masqué** (cf. #9) | ✓ C2 (lecture validée D22-bis) ; 🔴 masquage DOM brut → #9 |
+| 3 | FAILURE — **soft-assert (D22-bis)** : extension Jupiter + collecteur ThreadLocal + autodetection Parent POM | ⬜ (tranché sur papier) | **C1** : un listener observe, ne vote pas ; l'échec passe par l'extension Jupiter |  |
+| 4 | **SYNC `WebSync`** : `fluentWait` + flag JS + surface | ⬜ | **C4** : messages « mauvaise page »/« instable » = contrat `qa-maintenance` → constantes + test ; + no-leak (`By`) |  |
+| 5 | **Logback** : scope `compile` + `Configurator` + `logback-socle.xml` + services | ⬜ | **C6** : scope `compile` indissociable de la règle ArchUnit |  |
+| 6 | **Garde-fous ArchUnit** (static non-final ; ban `ch.qos.logback..` hors `internal.log`) + Surefire `dependenciesToScan` (Parent POM) | ⬜ | **C6** (l'autre moitié du duo) |  |
+| 7 | **DATA `DataFileManager`** : Excel chiffré (fixture réelle tôt) + CSV + `getValue` | ⬜ | Frontière **checked→unchecked** (D18), cause conservée |  |
+| 8 | **SECRET/MASK** — `masked()` / `sha256Prefix()` du type `Secret` | ✅ + testé | Masquage **à la source**, format D12 figé |  |
+| 9 | **SECRET/MASK** — intégration dans `TestFailureManager` + test « zéro clair » + garde-fou `value()` | ⬜ | **Masquage à la source** : masquer avant écriture ; **le DOM brut (option A) échappe à `Secret`** → fuite à traiter ici |  |
+| 10 | **`CyberArkApiClient`** + branchement `SecretManagers.get()` | ⬜ | WireMock (pas de serveur réel) ; secret jamais loggé |  |
+| 11 | **REPORTING AUTO** : listener (`@WithTag` → `publishStart`/`End`) + `AlmApiClient` + auth via `SecretManager` | ⬜ | **C5** : 2ᵉ listener à ajouter au **fichier services EXISTANT**, sinon no-op silencieux |  |
+| 12 | Dérives doc **W1–W7** | ✅ Terminé | — |  |
+| 13 | **Étape 9** — validation pilote sur SNAPSHOT/RC + ajustements API | ⬜ | Rester SNAPSHOT/RC : ne pas figer ni brûler une release |  |
+| 14 | **Étape 10** — japicmp/revapi + **1.0.0** + doc consommateur + généralisation | ⬜ | Baseline japicmp = 1ʳᵉ release publiée (rien à comparer avant) |  |
