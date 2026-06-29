@@ -190,7 +190,7 @@ réimplémenté). C'est exactement ce que la doctrine impose.
 
 | # | Risque | Gravité | Statut |
 |---|---|---|---|
-| C1 | **Soft-assert (D22) impossible à faire échouer un test depuis un `TestExecutionListener`** : ce hook **observe**, il ne **vote** pas le verdict | 🔴 Bloquant si non anticipé |  |
+| C1 | **Soft-assert (D22) impossible à faire échouer un test depuis un `TestExecutionListener`** : ce hook **observe**, il ne **vote** pas le verdict | 🔴 Bloquant si non anticipé | ✅ Levé (D22-bis : spike séquentiel + parallèle → mécanisme = extension Jupiter `AfterTestExecutionCallback`, pas le listener ; **impl** soft-assert = étape 8, cf. ch.9 #3) |
 | C2 | **Lecture du `TestOutcome` Serenity depuis le listener JUnit** : `StepEventBus` est lié au thread du test ; en parallèle / au mauvais instant, l'outcome peut être absent | 🔴 Make-or-break de tout le domaine FAILURE | ✅ Terminé |
 | C3 | ~~**Collision de nom `TestExecutionResult`** (JUnit vs socle `internal.reporting`)~~ — ✅ **résolu** : type socle renommé `TestExecutionReport` (2026-06-25) | ✅ Levé | ✅ Terminé |
 | C4 | **Messages différenciés de synchro** (« mauvaise page » / « application instable ») = **contrat de fait** consommé par `qa-maintenance` (D9) | 🔴 Si écrits en texte libre, la classification d'échec casse silencieusement |  |
@@ -330,7 +330,7 @@ des 17 projets.
 |---|---|---|---|---|
 | 1 | FAILURE — lecture du `TestOutcome` au bon thread (fondation du domaine) | ✅ Terminé | **C2** : outcome lié au thread du test, absent en parallèle si mal lu |  |
 | 2 | FAILURE — capture d'échec : 3 fichiers, feuille KO, `sanitize`, **DOM brut (option A)** | ✅ Terminé (DOM brut **confirmé via `qa-test`**) | **C2** (pont ThreadLocal même thread) + **DOM brut = texte non masqué** (cf. #9) | ✓ C2 (lecture validée D22-bis) ; 🔴 masquage DOM brut → #9 |
-| 3 | FAILURE — **soft-assert (D22-bis)** : extension Jupiter + collecteur ThreadLocal + autodetection Parent POM | ⬜ (tranché sur papier) | **C1** : un listener observe, ne vote pas ; l'échec passe par l'extension Jupiter |  |
+| 3 | FAILURE — **soft-assert (D22-bis)** : extension Jupiter + collecteur ThreadLocal + autodetection Parent POM | ⬜ impl (piège **C1 levé** : mécanisme tranché + spiké D22-bis) | **C1** : un listener observe, ne vote pas ; l'échec passe par l'extension Jupiter |  |
 | 4 | **SYNC `WebSync`** : `fluentWait` + flag JS + surface | ⬜ | **C4** : messages « mauvaise page »/« instable » = contrat `qa-maintenance` → constantes + test ; + no-leak (`By`) |  |
 | 5 | **Logback** : scope `compile` + `Configurator` + `logback-socle.xml` + services | ⬜ | **C6** : scope `compile` indissociable de la règle ArchUnit |  |
 | 6 | **Garde-fous ArchUnit** (static non-final ; ban `ch.qos.logback..` hors `internal.log`) + Surefire `dependenciesToScan` (Parent POM) | ⬜ | **C6** (l'autre moitié du duo) |  |
