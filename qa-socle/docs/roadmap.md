@@ -225,8 +225,11 @@ sont déjà masquées). Restent le **test « zéro clair »** sur les artefacts 
       `toString()`) — **sans changer sa signature publique** (figée en 6). **Fait** : format D12 +
       `SecretMaskingTest` (vecteur SHA-256 déterministe), build vert.
 - [ ] Garantir le masquage dans `TestFailureManager` (`internal`) : le contenu écrit s'appuie sur le rendu
-      masqué à la source ; **auditer la fuite du DOM brut** (option A) qui échappe à `Secret`.
-- [ ] **Tests** : aucun secret en clair dans les 3 artefacts `KO__` ni dans le log live.
+      masqué à la source ; **traiter la fuite du DOM brut** (option A) qui échappe à `Secret` —
+      mécanisme acté (revue externe 2026-07-07, cf. D16) : `type(By, Secret)` alimente un **registre
+      `ThreadLocal`** des secrets consommés ; `TestFailureManager` **remplace** ces valeurs par leur rendu
+      `masked()` dans le DOM capté **avant** écriture du `.html` (purge en fin de test).
+- [ ] **Tests** : aucun secret en clair dans les 3 artefacts `KO__` (**dump HTML inclus**) ni dans le log live.
 
 ---
 
@@ -240,7 +243,11 @@ sont déjà masquées). Restent le **test « zéro clair »** sur les artefacts 
 `WebSync`, `DataFileManager`, le soft-assert, `LogbackConfigurator`, les garde-fous ArchUnit,
 `CyberArkApiClient` et le reporting AUTO.
 
-- [ ] `WebSync` (cœur : fluentWait + flag JS) + tests comportementaux.
+- [ ] `WebSync` (cœur : fluentWait + flag JS) + tests comportementaux. **Deux exigences** (revue externe
+      2026-07-07, cf. D3/C8) : (1) **une seule horloge** — neutraliser les waits de la couche déléguée
+      (retries `WebElementFacade`, implicit waits Serenity à 0 via `serenity.conf.example`) pour éviter le
+      timeout multiplicatif ; (2) **tracker la dernière exception ignorée** dans la boucle et la joindre en
+      `cause` de la `SyncException` (support des messages différenciés C4).
 - [ ] `DataFileManager` (Excel/CSV) + tests.
 - [x] `TestFailureManager` (depuis le `TestOutcome` Serenity) + tests — **fait** : artefacts `KO__`
       (`ERROR.log`/`FAIL.log`/dump HTML), feuille KO, `sanitize` (accents translittérés), **capture du DOM
@@ -280,6 +287,10 @@ brûler de numéro de version.
 - [ ] Publier un **SNAPSHOT / RC** sur Artifactory (cf. `artifactory-jfrog-settings`).
 - [ ] Intégrer sur **1 projet pilote** et exécuter des tests réels.
 - [ ] Recueillir le retour terrain et **ajuster l'API** tant qu'elle n'est pas figée.
+- [ ] **Trancher le découpage d'artefacts** (mono-jar `qa-socle` vs `qa-socle-core`/`qa-socle-data`,
+      cf. D6-bis/C10) — irréversible après release (breaking change post-1.0).
+- [ ] Si le reporting AUTO est branché au pilote : **mesurer le coût des sessions ALM** (C9) et valider le
+      cache de token thread-safe (repli : publication agrégée en fin de run, cf. D13).
 - [ ] Verrouiller l'API quand le pilote est concluant (entrée de l'étape 10).
 
 ---
@@ -294,6 +305,10 @@ baseline publiée — d'où sa place ici (et non avant la 1ʳᵉ release).
 
 - [ ] Brancher **japicmp/revapi** (périmètre = API publique de l'étape 1) et faire **échouer le build**
       sur breaking change non intentionnel ; baseline = la release publiée ci-dessous.
+      ⚠️ **Périmètre ≠ filtre de package** (revue externe 2026-07-07, cf. D15/C7) : les méthodes héritées
+      n'apparaissent pas dans `WebSync.class` → inclure **explicitement** `AbstractSyncManager` dans le
+      périmètre surveillé, ou filtrer par **annotation** (`@PublicApi`) — sinon la surface héritée gelée
+      n'est pas protégée.
 - [ ] Publier la **version 1.0.0** sur Artifactory.
 - [ ] Fournir la **doc consommateur** : guide de démarrage + Javadoc de l'API publique (au-delà de
       `decisions.md`).

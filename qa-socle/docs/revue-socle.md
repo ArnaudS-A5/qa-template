@@ -193,9 +193,20 @@ réimplémenté). C'est exactement ce que la doctrine impose.
 | C1 | **Soft-assert (D22) impossible à faire échouer un test depuis un `TestExecutionListener`** : ce hook **observe**, il ne **vote** pas le verdict | 🔴 Bloquant si non anticipé | ✅ Levé (D22-bis : spike séquentiel + parallèle → mécanisme = extension Jupiter `AfterTestExecutionCallback`, pas le listener ; **impl** soft-assert = étape 8, cf. ch.9 #3) |
 | C2 | **Lecture du `TestOutcome` Serenity depuis le listener JUnit** : `StepEventBus` est lié au thread du test ; en parallèle / au mauvais instant, l'outcome peut être absent | 🔴 Make-or-break de tout le domaine FAILURE | ✅ Terminé |
 | C3 | ~~**Collision de nom `TestExecutionResult`** (JUnit vs socle `internal.reporting`)~~ — ✅ **résolu** : type socle renommé `TestExecutionReport` (2026-06-25) | ✅ Levé | ✅ Terminé |
-| C4 | **Messages différenciés de synchro** (« mauvaise page » / « application instable ») = **contrat de fait** consommé par `qa-maintenance` (D9) | 🔴 Si écrits en texte libre, la classification d'échec casse silencieusement |  |
-| C5 | **Second listener (reporting AUTO) à enregistrer dans le MÊME fichier services** | 🟠 Oubli ⇒ no-op silencieux (le piège que D16 voulait éviter) |  |
-| C6 | **Scope Logback `runtime`→`compile` + règle ArchUnit = un duo indissociable** | 🟠 Basculer le scope sans le garde-fou expose le binding aux 17 projets |  |
+| C4 | **Messages différenciés de synchro** (« mauvaise page » / « application instable ») = **contrat de fait** consommé par `qa-maintenance` (D9) | 🔴 Si écrits en texte libre, la classification d'échec casse silencieusement | ⬜ Ouvert |
+| C5 | **Second listener (reporting AUTO) à enregistrer dans le MÊME fichier services** | 🟠 Oubli ⇒ no-op silencieux (le piège que D16 voulait éviter) | ⬜ Ouvert |
+| C6 | **Scope Logback `runtime`→`compile` + règle ArchUnit = un duo indissociable** | 🟠 Basculer le scope sans le garde-fou expose le binding aux 17 projets | ⬜ Ouvert |
+
+> Les lignes **C7–C12** ci-dessous proviennent de la **revue externe du 2026-07-07** (détail en §6-bis).
+
+| # | Risque | Gravité | Statut |
+|---|---|---|---|
+| C7 | **japicmp « élargi » (D15) inopérant avec un filtre par package** : les méthodes héritées n'apparaissent pas dans `WebSync.class` → un retrait dans `AbstractSyncManager` (`internal`) passe invisible | 🔴 Casse silencieuse des 17 projets malgré le garde-fou | ⬜ Ouvert |
+| C8 | **Empilement de retries** : `fluentWait` maison × retries `WebElementFacade` (12) × waits implicites Serenity → timeout effectif multiplicatif ; + la boucle maison (`Supplier<T>`) ne tracke pas la **dernière exception ignorée** requise par les messages différenciés (C4) | 🟠 Tests qui « pendent » des minutes ; messages D3 impossibles à produire | ⬜ Ouvert |
+| C9 | **ALM : une session REST par `publishStart`/`publishEnd`** — l'auth ALM (LWSSO + QCSession) est coûteuse et throttlée ; 2 × N tests en parallèle ⇒ timeouts d'auth sur le reporting | 🟠 Reporting en échec sur des tests pourtant verts | ⬜ Ouvert |
+| C10 | **Ré-export `compile` massif** (POI/ooxml/compress partout) : surface CVE mutualisée + découpage `core`/`data` = breaking change **après** 1.0.0 ; alignement matrice **Serenity ↔ Selenium** à chaque bump | 🟠 À trancher AVANT la release, irréversible ensuite | ⬜ Ouvert |
+| C11 | **Thread de `executionFinished` = détail d'implémentation Jupiter** (validé empiriquement en 5.11, non contractuel JUnit Platform) | 🟡 À revalider à chaque bump `junit.jupiter.version` ; filet `latestTestOutcome()` à tester | ⬜ Ouvert |
+| C12 | **Héritage `qa-parent`** : `distributionManagement` transmis aux 17 consommateurs + collision possible avec un parent POM d'entreprise imposé | 🟡 À vérifier au contexte Artifactory réel (adoption) | ⬜ Ouvert |
 
 ---
 
@@ -282,19 +293,83 @@ des 17 projets.
 
 ---
 
+## 6-bis. Revue externe (2026-07-07) — pièges complémentaires C7–C12
+
+> Revue d'architecture indépendante, menée après la revue interne §1–6. Verdict global confirmé :
+> fondations saines, gouvernance exemplaire. Les points ci-dessous sont des **angles morts
+> d'implémentation et de gouvernance de release**, pas des défauts de conception.
+
+### C7 — japicmp : la surface héritée exige un périmètre explicite 🔴
+D15 acte que la surface publique héritée d'`AbstractSyncManager` fait partie du contrat gelé, garde-fou
+« japicmp élargi ». Piège mécanique : japicmp compare des **class files**, et les méthodes héritées
+**n'apparaissent pas** dans `WebSync.class`.
+- **Ne pas faire** : configurer japicmp avec un filtre d'inclusion `api.*` (le réglage naturel vu D15) —
+  un retrait de méthode publique dans `internal.sync.AbstractSyncManager` passerait **invisible** tout en
+  cassant les 17 projets.
+- **Faire** : inclure **explicitement** `AbstractSyncManager` dans le périmètre surveillé, ou filtrer par
+  **annotation** (`@PublicApi` maison sur les types du contrat) plutôt que par package. À trancher et
+  documenter dans D15 **avant** l'étape 10.
+
+### C8 — Empilement de retries + tracking de la dernière exception 🟠
+`fluentWait` maison (polling ~250 ms jusqu'au timeout) délègue à `WebElementFacade`, qui porte lui-même
+`NUMBER_OF_TRIES_FOR_UNREADY_ELEMENTS = 12` plus les waits implicites Serenity. Pire cas :
+`timeout_socle × retries_facade × implicit_wait` — un test qui devrait échouer en 10 s peut mettre
+plusieurs minutes.
+- **Ne pas faire** : laisser les horloges de la couche déléguée actives sous la boucle maison.
+- **Faire** : neutraliser les waits internes délégués (timeout facade court, implicit wait à 0 dans
+  `serenity.conf.example`) pour que le `fluentWait` du socle soit la **seule horloge**. Par ailleurs, les
+  messages différenciés (C4/D3) exigent la **dernière exception ignorée** : Selenium `FluentWait` la porte
+  nativement via la cause du `TimeoutException`, la signature maison `Supplier<T>` **non** → la boucle doit
+  la tracker explicitement.
+
+### C9 — ALM : coût des sessions par publication 🟠
+D13 impose le stateless par publication (chaque `publishStart`/`publishEnd` ouvre et ferme sa session).
+L'authentification ALM (LWSSO + QCSession) est coûteuse et sujette au throttling : à 2 publications ×
+N tests × exécution parallèle, risque de timeouts d'auth faisant échouer le *reporting* de tests verts.
+- **Faire** : promouvoir le **cache de token thread-safe** (simple note dans D19) en **exigence**, ou
+  basculer sur une **publication agrégée en fin de run** (un seul batch), quitte à sacrifier le statut
+  « In Progress » temps réel. À mesurer au pilote (étape 9) si le reporting y est branché.
+
+### C10 — Mono-jar : trancher avant 1.0.0, irréversible ensuite 🟠
+`qa-socle` réexporte Selenium, Serenity, POI (+ ooxml + compress), SLF4J/Logback et JUnit en `compile`
+aux 17 projets. Le pilotage centralisé est le bon objectif, mais : les projets purement web portent une
+des bibliothèques les plus touchées par les CVE (POI), et chaque CVE force une release + 17 bumps même
+hors périmètre. Un découpage ultérieur (`qa-socle-core` / `qa-socle-data`) serait un **breaking change
+post-1.0**.
+- **Faire** : trancher **avant la release** (étape 9/10) : mono-jar assumé ou découpage. Et à chaque bump,
+  vérifier la **matrice de compatibilité Serenity ↔ Selenium** (versions épinglées indépendamment dans le
+  Parent POM → conflit de classpath silencieux possible).
+
+### C11 — Thread de `executionFinished` : validé, non contractuel 🟡
+Le spike D22-bis valide **empiriquement** (Jupiter 5.11) que `executionFinished` s'exécute sur le thread
+du test — c'est un détail d'implémentation du moteur, **pas un contrat** JUnit Platform.
+- **Faire** : le filet `latestTestOutcome()` doit être un **chemin testé** (pas seulement documenté), et la
+  validation C2 rejouée à chaque bump `junit.jupiter.version` (test de non-régression parallèle dédié).
+
+### C12 — Héritage `qa-parent` : deux effets de bord à vérifier à l'adoption 🟡
+Les 17 consommateurs héritant de `qa-parent` héritent aussi de `distributionManagement` (ils
+déploieraient vers les repos du **socle**) et peuvent entrer en collision avec un **parent POM
+d'entreprise** imposé par la DSI (chaîne d'héritage unique en Maven).
+- **Faire** : au contexte Artifactory réel, vérifier ces deux points ; si un parent d'entreprise existe,
+  `qa-parent` doit s'y chaîner (`<parent>` de `qa-parent`).
+
+---
+
 ## 7. Checklist d'implémentation (ordre conseillé pour l'étape 8)
 
 1. **FAILURE en premier** : valider C2 (lecture de l'outcome, séquentiel + parallèle) **avant** tout le
    reste du domaine ; c'est le socle de la capture d'échec et du masquage.
 2. **Trancher C1 (soft-assert)** sur le papier avant de coder. ~~C3 (renommage)~~ ✅ fait : `TestExecutionReport`.
 3. **SYNC** : `fluentWait` (moteur + absorption des exceptions transitoires) puis la surface ; figer les
-   messages C4 en constantes + test.
+   messages C4 en constantes + test ; neutraliser les horloges déléguées et tracker la dernière
+   exception ignorée (C8).
 4. **Logback** : scope compile + `Configurator` + `logback-socle.xml` + règle ArchUnit (duo C6) **en un
    lot**.
 5. **DATA** : Excel/chiffré (fixture réelle tôt) + CSV + `getValue`.
 6. **SECRET/MASK** : `masked()`/`sha256Prefix()` + test « zéro clair » + garde-fou éventuel sur `value()`.
 7. **REPORTING AUTO** : second listener **ajouté au fichier services existant** (C5), résolution
-   `@WithTag` (1er tag, opt-out silencieux), auth mot de passe via `SecretManager`.
+   `@WithTag` (1er tag, opt-out silencieux), auth mot de passe via `SecretManager` ; cache de token
+   thread-safe ou publication agrégée (C9).
 8. Corriger en passant les **dérives doc** W1–W7.
 
 ---
@@ -311,8 +386,9 @@ des 17 projets.
 ## 9. Tableau de suivi de l'implémentation (étapes 8 → 10)
 
 > Ordre = checklist §7. Statut : ✅ Terminé · 🟡 En cours · ⬜ Pas fait. La colonne **« Vigilance
-> respectée ? »** reste **vide** tant que l'élément n'est pas implémenté ; elle sera remplie (✓ / 🔴)
-> lors d'une **revue finale**. Mise à jour au fil de l'avancement.
+> respectée ? »** porte **⏳ revue finale** tant que l'élément n'est pas évalué (et **—** s'il n'a aucun
+> point de vigilance) ; elle sera renseignée **✓ / 🔴** lors d'une **revue finale**. Mise à jour au fil de
+> l'avancement.
 
 **Préalable — ne pas confondre trois choses distinctes autour du « masquage » :**
 
@@ -328,17 +404,17 @@ des 17 projets.
 
 | # | Élément | Statut | ⚠️ Point ultra-critique | Vigilance respectée ? |
 |---|---|---|---|---|
-| 1 | FAILURE — lecture du `TestOutcome` au bon thread (fondation du domaine) | ✅ Terminé | **C2** : outcome lié au thread du test, absent en parallèle si mal lu |  |
+| 1 | FAILURE — lecture du `TestOutcome` au bon thread (fondation du domaine) | ✅ Terminé | **C2** : outcome lié au thread du test, absent en parallèle si mal lu | ⏳ revue finale |
 | 2 | FAILURE — capture d'échec : 3 fichiers, feuille KO, `sanitize`, **DOM brut (option A)** | ✅ Terminé (DOM brut **confirmé via `qa-test`**) | **C2** (pont ThreadLocal même thread) + **DOM brut = texte non masqué** (cf. #9) | ✓ C2 (lecture validée D22-bis) ; 🔴 masquage DOM brut → #9 |
-| 3 | FAILURE — **soft-assert (D22-bis)** : extension Jupiter + collecteur ThreadLocal + autodetection Parent POM | ⬜ impl (piège **C1 levé** : mécanisme tranché + spiké D22-bis) | **C1** : un listener observe, ne vote pas ; l'échec passe par l'extension Jupiter |  |
-| 4 | **SYNC `WebSync`** : `fluentWait` + flag JS + surface | ⬜ | **C4** : messages « mauvaise page »/« instable » = contrat `qa-maintenance` → constantes + test ; + no-leak (`By`) |  |
-| 5 | **Logback** : scope `compile` + `Configurator` + `logback-socle.xml` + services | ⬜ | **C6** : scope `compile` indissociable de la règle ArchUnit |  |
-| 6 | **Garde-fous ArchUnit** (static non-final ; ban `ch.qos.logback..` hors `internal.log`) + Surefire `dependenciesToScan` (Parent POM) | ⬜ | **C6** (l'autre moitié du duo) |  |
-| 7 | **DATA `DataFileManager`** : Excel chiffré (fixture réelle tôt) + CSV + `getValue` | ⬜ | Frontière **checked→unchecked** (D18), cause conservée |  |
-| 8 | **SECRET/MASK** — `masked()` / `sha256Prefix()` du type `Secret` | ✅ + testé | Masquage **à la source**, format D12 figé |  |
-| 9 | **SECRET/MASK** — intégration dans `TestFailureManager` + test « zéro clair » + garde-fou `value()` | ⬜ | **Masquage à la source** : masquer avant écriture ; **le DOM brut (option A) échappe à `Secret`** → fuite à traiter ici |  |
-| 10 | **`CyberArkApiClient`** + branchement `SecretManagers.get()` | ⬜ | WireMock (pas de serveur réel) ; secret jamais loggé |  |
-| 11 | **REPORTING AUTO** : listener (`@WithTag` → `publishStart`/`End`) + `AlmApiClient` + auth via `SecretManager` | ⬜ | **C5** : 2ᵉ listener à ajouter au **fichier services EXISTANT**, sinon no-op silencieux |  |
-| 12 | Dérives doc **W1–W7** | ✅ Terminé | — |  |
-| 13 | **Étape 9** — validation pilote sur SNAPSHOT/RC + ajustements API | ⬜ | Rester SNAPSHOT/RC : ne pas figer ni brûler une release |  |
-| 14 | **Étape 10** — japicmp/revapi + **1.0.0** + doc consommateur + généralisation | ⬜ | Baseline japicmp = 1ʳᵉ release publiée (rien à comparer avant) |  |
+| 3 | FAILURE — **soft-assert (D22-bis)** : extension Jupiter + collecteur ThreadLocal + autodetection Parent POM | ⬜ impl (piège **C1 levé** : mécanisme tranché + spiké D22-bis) | **C1** : un listener observe, ne vote pas ; l'échec passe par l'extension Jupiter | ⏳ revue finale |
+| 4 | **SYNC `WebSync`** : `fluentWait` + flag JS + surface | ⬜ | **C4** : messages « mauvaise page »/« instable » = contrat `qa-maintenance` → constantes + test ; + no-leak (`By`) | ⏳ revue finale |
+| 5 | **Logback** : scope `compile` + `Configurator` + `logback-socle.xml` + services | ⬜ | **C6** : scope `compile` indissociable de la règle ArchUnit | ⏳ revue finale |
+| 6 | **Garde-fous ArchUnit** (static non-final ; ban `ch.qos.logback..` hors `internal.log`) + Surefire `dependenciesToScan` (Parent POM) | ⬜ | **C6** (l'autre moitié du duo) | ⏳ revue finale |
+| 7 | **DATA `DataFileManager`** : Excel chiffré (fixture réelle tôt) + CSV + `getValue` | ⬜ | Frontière **checked→unchecked** (D18), cause conservée | ⏳ revue finale |
+| 8 | **SECRET/MASK** — `masked()` / `sha256Prefix()` du type `Secret` | ✅ + testé | Masquage **à la source**, format D12 figé | ⏳ revue finale |
+| 9 | **SECRET/MASK** — intégration dans `TestFailureManager` + test « zéro clair » + garde-fou `value()` | ⬜ | **Masquage à la source** : masquer avant écriture ; **le DOM brut (option A) échappe à `Secret`** → fuite à traiter ici | ⏳ revue finale |
+| 10 | **`CyberArkApiClient`** + branchement `SecretManagers.get()` | ⬜ | WireMock (pas de serveur réel) ; secret jamais loggé | ⏳ revue finale |
+| 11 | **REPORTING AUTO** : listener (`@WithTag` → `publishStart`/`End`) + `AlmApiClient` + auth via `SecretManager` | ⬜ | **C5** : 2ᵉ listener à ajouter au **fichier services EXISTANT**, sinon no-op silencieux | ⏳ revue finale |
+| 12 | Dérives doc **W1–W7** | ✅ Terminé | — | — |
+| 13 | **Étape 9** — validation pilote sur SNAPSHOT/RC + ajustements API | ⬜ | Rester SNAPSHOT/RC : ne pas figer ni brûler une release | ⏳ revue finale |
+| 14 | **Étape 10** — japicmp/revapi + **1.0.0** + doc consommateur + généralisation | ⬜ | Baseline japicmp = 1ʳᵉ release publiée (rien à comparer avant) | ⏳ revue finale |

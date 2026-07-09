@@ -74,6 +74,20 @@ Acté lors de l'écriture des signatures (étape 6), **sans renier le `fluentWai
 - Élément **absent** au timeout → « mauvaise page / page non chargée ».
 - Élément **présent mais jamais interactable** → « application instable ».
 
+### Mise à jour (revue externe 2026-07-07) — une seule horloge + dernière exception (C8)
+
+Deux exigences d'implémentation ajoutées au contrat du `fluentWait` (cf. revue-socle §6-bis/C8) :
+
+- **Une seule horloge** : la délégation à `WebElementFacade` empile ses propres retries
+  (`NUMBER_OF_TRIES_FOR_UNREADY_ELEMENTS = 12`) et les waits implicites Serenity **sous** la boucle
+  maison → timeout effectif multiplicatif (`timeout_socle × retries_facade × implicit_wait`). Les
+  horloges de la couche déléguée doivent être **neutralisées** (timeout facade court, implicit wait à 0,
+  défauts posés dans `serenity.conf.example`) : le `fluentWait` du socle est la **seule** horloge.
+- **Tracking de la dernière exception ignorée** : les messages différenciés ci-dessus se déduisent de la
+  **dernière exception absorbée** au moment du timeout. Selenium `FluentWait` la porte nativement (cause
+  du `TimeoutException`) ; la signature maison (`Supplier<T>`) **non** → la boucle doit la mémoriser
+  explicitement et la joindre en `cause` de la `SyncException` (cohérent avec D18).
+
 ## D4 — Abstraction de la synchronisation (web + mobile)
 
 - `AbstractSyncManager` (moteur `fluentWait` + flag JS **et** tout le contrat commun par `By`) →
@@ -329,6 +343,15 @@ Le profil est sélectionné par configuration (`serenity.conf`). En profil « to
 
 Aucune session ALM partagée entre threads : chaque appel `publishStart`/`publishEnd` ouvre et ferme sa propre session. Garantit la sûreté en exécution parallèle Serenity.
 
+#### Mise à jour (revue externe 2026-07-07) — coût des sessions (C9)
+
+L'authentification ALM (LWSSO + QCSession) est **coûteuse et throttlée** : à 2 publications × N tests en
+parallèle, le stateless « une session par appel » risque des timeouts d'auth faisant échouer le
+*reporting* de tests pourtant verts. Décision d'implémentation (étape 8) : le **cache de token
+thread-safe** — simple note en D19 — devient une **exigence** de `AlmApiClient` ; si la mesure au pilote
+(étape 9) reste insuffisante, repli sur une **publication agrégée en fin de run** (un seul batch), au prix
+du statut « In Progress » temps réel. Le contrat public (aucun) et les signatures internes ne changent pas.
+
 ## D14 — Renommages de classes actés (avant gel de l'API)
 
 Renommages appliqués pendant la phase squelette (coût nul : rien d'implémenté, rien de publié) :
@@ -441,6 +464,16 @@ par `By`) d'`AbstractSyncManager` (`internal`). Choix retenu (option A, après a
   sous-classe, puis le correctif stable est **promu dans le socle** (changement de corps = non-breaking).
   Le **mode opératoire** (sous-classe nommée + point d'instanciation unique) est documenté dans le
   **Javadoc de `WebSync`/`MobileSync`**, pas ici.
+
+### Mise à jour (revue externe 2026-07-07) — mécanique du japicmp « élargi » (C7)
+
+Le garde-fou « élargi » ci-dessus a un **piège mécanique** : japicmp compare des **class files**, et les
+méthodes héritées **n'apparaissent pas** dans `WebSync.class`/`MobileSync.class`. Un filtre d'inclusion
+`api.*` (le réglage naturel vu D15) rendrait donc **invisible** un retrait de méthode publique dans
+`internal.sync.AbstractSyncManager` — tout en cassant les 17 projets. Conséquence actée pour l'étape 10 :
+le périmètre japicmp est défini soit en incluant **explicitement `AbstractSyncManager`** en plus de
+`api.*`, soit par **annotation** (`@PublicApi` maison posée sur les types du contrat, filtrage japicmp par
+annotation). Jamais par simple filtre de package.
 
 ## D16 — Capture d'échec : activation native + artefacts écrits par le socle (roadmap étape 6)
 
@@ -555,6 +588,21 @@ dépendent. Donc :
 - **mais** changer le **format de sortie** est un **breaking change** (SemVer), même si aucune ligne
   de code consommateur ne change. À traiter comme l'API publique vis-à-vis du garde-fou (étape 10).
 
+### Mise à jour (revue externe 2026-07-07) — masquage du DOM brut (mécanisme, étape 7)
+
+Le masquage à la source (`Secret#toString()`) protège les steps Serenity, mais **pas** le dump HTML :
+après un `type(By, Secret)`, la valeur en clair peut être **reflétée dans le DOM** (binding
+Angular/React fréquent sur l'attribut `value`) et donc dans le fichier `.html` du dossier `KO__`. La
+« fuite du DOM brut » déjà identifiée (roadmap étape 7) est ici dotée d'un **mécanisme** :
+
+- `type(By, Secret)` **enregistre** la valeur consommée dans un **registre `ThreadLocal`** des secrets du
+  test courant (purgé en fin de test, même hygiène que `RawDomCaptureListener`) ;
+- avant écriture du `.html`, `TestFailureManager` **remplace** chaque valeur du registre par son rendu
+  masqué (`masked()`) dans le DOM capté ;
+- le test « zéro clair » (étape 7) couvre les **trois artefacts, dump HTML inclus**, et la console.
+
+Aucun impact sur l'API publique ni sur le contrat de sortie (le `.html` reste un DOM rendable).
+
 ## D6-bis — Versioning : fin de `RELEASE`, Maven Wrapper + Enforcer
 
 **Amende D6** : remplace le mot-clé `RELEASE` par une **version épinglée explicite, bumpée par outil**.
@@ -602,6 +650,21 @@ ou automatisé via **Renovate/Dependabot** (ouvre PR, CI teste, merge). Bénéfi
 
 Si un projet doit rester sur une ancienne version du socle : simple non-merge de la PR de bump ou
 `git revert` si déjà merged. C'est mille fois plus clair et traçable que d'inventer un override.
+
+### Mise à jour (revue externe 2026-07-07) — trois points de gouvernance (C10/C12)
+
+- **Mono-jar : arbitrage requis AVANT 1.0.0.** Le ré-export `compile` massif (Selenium, Serenity, POI +
+  ooxml + compress, SLF4J/Logback, JUnit) mutualise la **surface CVE** : les projets purement web portent
+  POI, et chaque CVE POI force une release du socle + 17 bumps même hors périmètre. Un découpage ultérieur
+  (`qa-socle-core` / `qa-socle-data`) serait un **breaking change post-1.0** → à trancher au plus tard à
+  l'étape 9/10 (mono-jar assumé ou découpage), **jamais** « au fil de l'eau » après release.
+- **Matrice Serenity ↔ Selenium.** `selenium-java` et `serenity-*` sont épinglés **indépendamment** dans
+  le Parent POM : toute montée de l'un doit vérifier la matrice de compatibilité de l'autre (sinon conflit
+  de classpath silencieux). À intégrer au workflow de bump (Renovate : grouper les deux).
+- **Effets de bord de l'héritage `qa-parent`** (à vérifier à l'adoption, contexte Artifactory réel) :
+  `distributionManagement` est **hérité** par les consommateurs (ils déploieraient vers les repos du
+  socle) ; et la chaîne d'héritage Maven étant unique, un éventuel **parent POM d'entreprise** imposé par
+  la DSI doit être chaîné **au-dessus** de `qa-parent` (`<parent>` de `qa-parent`), pas en concurrence.
 
 ---
 
@@ -983,3 +1046,15 @@ de D16 est **clos**.
 - **Aucune nouvelle signature publique, aucun impact sur le gel d'API** (mécanique d'étape 8).
 - Implémentation reportée à l'**étape 8** (2 petites classes `internal` + 1 fichier service + 1 paramètre
   Surefire dans le Parent POM + branchement des `should…`).
+
+### Mise à jour (revue externe 2026-07-07) — validation empirique ≠ contrat (C11)
+
+Le constat C2 (callback sur le thread du test) est **empirique** (Jupiter 5.11.4) : le thread d'exécution
+de `executionFinished` est un **détail d'implémentation** du moteur, pas un contrat JUnit Platform.
+Conséquences actées :
+
+- le filet `latestTestOutcome()` doit être un **chemin testé** (cas dégradé simulé), pas seulement
+  documenté ;
+- la validation C2 (séquentiel + parallèle) est **rejouée à chaque bump** de `junit.jupiter.version` —
+  test de non-régression parallèle dédié dans le socle, versions restant épinglées par le Parent POM
+  (D6-bis) donc le risque est contrôlé, jamais subi.
