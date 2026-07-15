@@ -42,11 +42,15 @@ jobs:
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2-
 
-      - name: Build, tests et analyse SonarCloud
+      # test-compile : produit target/classes ET target/test-classes (binaires requis par
+      # l'analyseur Java de Sonar) SANS exécuter les tests — inutile ici, et ça éviterait
+      # d'instancier un WebDriver / lancer un navigateur absent du runner. Les tests
+      # comportementaux (navigateur) relèvent du projet consommateur qa-test.
+      - name: Compilation et analyse SonarCloud
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: >
-          ./mvnw -B verify sonar:sonar
+          ./mvnw -B test-compile sonar:sonar
           -Dsonar.projectKey=ArnaudS-A5_qa-template
           -Dsonar.organization=arnauds-a5
           -Dsonar.host.url=https://sonarcloud.io
