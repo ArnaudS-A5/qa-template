@@ -17,6 +17,9 @@ import java.nio.file.Path;
  */
 public final class DataFiles {
 
+	/** Message des fabriques non encore implémentées (domaine data à fournir à l'étape 8). */
+	private static final String A_FOURNIR = "DataFileManager non implémenté (domaine data — à fournir étape 8)";
+
 	private DataFiles() {
 	}
 
@@ -27,7 +30,7 @@ public final class DataFiles {
 	 * @return un {@link DataFileManager} adossé à Excel
 	 */
 	public static DataFileManager excel(Path file) {
-		return null;
+		throw new UnsupportedOperationException(A_FOURNIR);
 	}
 
 	/**
@@ -38,7 +41,7 @@ public final class DataFiles {
 	 * @return un {@link DataFileManager} adossé à Excel chiffré
 	 */
 	public static DataFileManager excel(Path file, String password) {
-		return null;
+		throw new UnsupportedOperationException(A_FOURNIR);
 	}
 
 	/**
@@ -48,7 +51,7 @@ public final class DataFiles {
 	 * @return un {@link DataFileManager} adossé à CSV
 	 */
 	public static DataFileManager csv(Path file) {
-		return null;
+		throw new UnsupportedOperationException(A_FOURNIR);
 	}
 
 	/**
@@ -59,6 +62,6 @@ public final class DataFiles {
 	 * @return un {@link DataFileManager} adossé à CSV
 	 */
 	public static DataFileManager csv(Path file, char delimiter) {
-		return null;
+		throw new UnsupportedOperationException(A_FOURNIR);
 	}
 }

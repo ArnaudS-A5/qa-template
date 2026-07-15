@@ -19,27 +19,32 @@ import com.example.qa.api.exception.DataFileException;
  */
 public abstract class AbstractDataFileManager implements DataFileManager {
 
+	/** Message du commun data non encore implémenté (mapping/en-têtes à fournir à l'étape 8). */
+	private static final String A_FOURNIR = "DataFileManager non implémenté (domaine data — à fournir étape 8)";
+
 	@Override
 	public List<Map<String, String>> readRows() {
-		return null;
+		throw new UnsupportedOperationException(A_FOURNIR);
 	}
 
 	@Override
 	public List<Map<String, String>> readRows(String source) {
-		return null;
+		throw new UnsupportedOperationException(A_FOURNIR);
 	}
 
 	@Override
 	public String getValue(int rowIndex, String column) {
-		return null;
+		throw new UnsupportedOperationException(A_FOURNIR);
 	}
 
 	@Override
 	public void writeRows(List<Map<String, String>> rows) {
+		throw new UnsupportedOperationException(A_FOURNIR);
 	}
 
 	@Override
 	public void writeRows(String source, List<Map<String, String>> rows) {
+		throw new UnsupportedOperationException(A_FOURNIR);
 	}
 
 	// ============================================================================================

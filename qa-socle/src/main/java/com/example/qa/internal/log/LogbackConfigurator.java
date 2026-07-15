@@ -32,6 +32,10 @@ package com.example.qa.internal.log;
  * <p>Squelette — implémentation réelle (interface {@code Configurator} + {@code META-INF/services} +
  * {@code logback-socle.xml}) à fournir à l'étape 8.
  */
+// S1118 (masquer le constructeur) supprimé volontairement : ce n'est PAS une classe utilitaire —
+// elle implémentera ch.qos.logback.classic.spi.Configurator, qui exige un constructeur public sans
+// argument instancié par le ServiceLoader Logback (cf. javadoc). Les constantes ne sont que provisoires.
+@SuppressWarnings("java:S1118")
 public final class LogbackConfigurator {
 
 	/** Namespace de log stable du socle (« qa »), indépendant du base package (D17). */
@@ -45,5 +49,6 @@ public final class LogbackConfigurator {
 	public static final String LEVEL_KEY = "qa.logger.level";
 
 	public LogbackConfigurator() {
+		// Constructeur public sans argument requis par le ServiceLoader Logback ; corps à l'implémentation (étape 8).
 	}
 }

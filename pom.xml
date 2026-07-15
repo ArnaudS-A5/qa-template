@@ -26,7 +26,7 @@
       ============================================================================
     -->
 
-    <!-- TODO: aligner groupId/version sur la convention réelle de l'organisation -->
+    <!-- À l'adoption : aligner groupId/version sur la convention réelle de l'organisation (placeholder D17). -->
     <groupId>com.example.qa</groupId>
     <artifactId>qa-parent</artifactId>
     <version>1.0.0-SNAPSHOT</version>

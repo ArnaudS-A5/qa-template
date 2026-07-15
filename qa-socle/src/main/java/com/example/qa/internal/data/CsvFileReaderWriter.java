@@ -15,24 +15,30 @@ import java.util.List;
  */
 public class CsvFileReaderWriter extends AbstractDataFileManager {
 
+	/** Message du brut CSV non encore implémenté (à fournir à l'étape 8). */
+	private static final String A_FOURNIR = "Lecture/écriture CSV non implémentée (à fournir étape 8)";
+
 	/** Constructeur sans cible (câblage / tests de hiérarchie). */
 	public CsvFileReaderWriter() {
 	}
 
 	/** Cible un fichier CSV (séparateur par défaut). */
 	public CsvFileReaderWriter(Path file) {
+		// Cible mémorisée à l'implémentation (étape 8).
 	}
 
 	/** Cible un fichier CSV avec un séparateur explicite (ex. {@code ';'}). */
 	public CsvFileReaderWriter(Path file, char delimiter) {
+		// Cible et séparateur mémorisés à l'implémentation (étape 8).
 	}
 
 	@Override
 	protected List<List<String>> readRawRows(String source) {
-		return null;
+		throw new UnsupportedOperationException(A_FOURNIR);
 	}
 
 	@Override
 	protected void writeRawRows(String source, List<List<String>> rawRows) {
+		throw new UnsupportedOperationException(A_FOURNIR);
 	}
 }

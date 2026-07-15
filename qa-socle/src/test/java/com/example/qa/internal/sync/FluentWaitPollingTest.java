@@ -75,9 +75,10 @@ class FluentWaitPollingTest {
 			throw new InvalidElementStateException("désactivé");
 		};
 
-		SyncException thrown = assertThrows(SyncException.class, () -> AbstractSyncManager.poll(
-				LOCATOR, TIMEOUT, POLLING, alwaysBlocked,
-				diagnosisReturning(EnumSet.of(SyncCondition.DISABLED, SyncCondition.INTERCEPTED), diagCalls)));
+		Supplier<Set<SyncCondition>> diagnosis =
+				diagnosisReturning(EnumSet.of(SyncCondition.DISABLED, SyncCondition.INTERCEPTED), diagCalls);
+		SyncException thrown = assertThrows(SyncException.class,
+				() -> AbstractSyncManager.poll(LOCATOR, TIMEOUT, POLLING, alwaysBlocked, diagnosis));
 
 		assertInstanceOf(InvalidElementStateException.class, thrown.getCause());
 		assertTrue(thrown.getMessage().contains("[DISABLED]"), thrown.getMessage());
@@ -95,8 +96,9 @@ class FluentWaitPollingTest {
 			throw new NoSuchElementException("jamais");
 		};
 
-		SyncException thrown = assertThrows(SyncException.class, () -> AbstractSyncManager.poll(
-				LOCATOR, TIMEOUT, POLLING, alwaysBlocked, diagnosisReturning(Set.of(), new AtomicInteger())));
+		Supplier<Set<SyncCondition>> diagnosis = diagnosisReturning(Set.of(), new AtomicInteger());
+		SyncException thrown = assertThrows(SyncException.class,
+				() -> AbstractSyncManager.poll(LOCATOR, TIMEOUT, POLLING, alwaysBlocked, diagnosis));
 
 		assertTrue(thrown.getMessage().contains("indéterminée"), thrown.getMessage());
 		assertEquals(0, thrown.getSuppressed().length);
@@ -112,8 +114,9 @@ class FluentWaitPollingTest {
 			throw new IllegalArgumentException("bug de test, pas de synchro");
 		};
 
-		assertThrows(IllegalArgumentException.class, () -> AbstractSyncManager.poll(
-				LOCATOR, TIMEOUT, POLLING, buggy, diagnosisReturning(Set.of(), diagCalls)));
+		Supplier<Set<SyncCondition>> diagnosis = diagnosisReturning(Set.of(), diagCalls);
+		assertThrows(IllegalArgumentException.class,
+				() -> AbstractSyncManager.poll(LOCATOR, TIMEOUT, POLLING, buggy, diagnosis));
 
 		assertEquals(1, attempts.get());
 		assertEquals(0, diagCalls.get());
