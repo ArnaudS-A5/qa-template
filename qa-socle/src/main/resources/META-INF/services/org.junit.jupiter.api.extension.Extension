@@ -1,0 +1,4 @@
+# Soft-assert du socle (D22-bis) : fait échouer le test en fin d'exécution si des assertions
+# souples ont été accumulées. Activé par junit.jupiter.extensions.autodetection.enabled=true
+# (Parent POM) — aucune annotation côté test.
+com.example.qa.internal.assertion.SoftAssertionExtension

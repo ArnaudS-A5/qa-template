@@ -155,6 +155,19 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>${surefire.plugin.version}</version>
+                    <configuration>
+                        <!-- Auto-détection des extensions JUnit 5 déclarées en ServiceLoader
+                             (META-INF/services/org.junit.jupiter.api.extension.Extension).
+                             Active le soft-assert du socle (SoftAssertionExtension) SANS aucune
+                             annotation ni @ExtendWith côté test — hérité par les 17 consommateurs
+                             (décision D22-bis : un listener observe, seule une extension Jupiter
+                             peut faire échouer le test). -->
+                        <properties>
+                            <configurationParameters>
+                                junit.jupiter.extensions.autodetection.enabled = true
+                            </configurationParameters>
+                        </properties>
+                    </configuration>
                 </plugin>
                 <!-- Agrégation des rapports Serenity : mvn serenity:aggregate
                      (rapport HTML sous target/site/serenity/). Utilisé par les
