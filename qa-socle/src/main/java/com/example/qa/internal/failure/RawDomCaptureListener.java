@@ -25,9 +25,10 @@ import org.slf4j.LoggerFactory;
  * cette purge garantit qu'aucun DOM d'un test précédent ne fuit vers un test suivant.
  *
  * <p><b>Enregistrement</b> : déclaré comme SPI Serenity dans
- * {@code META-INF/services/net.thucydides.model.steps.StepListener}. La prise en compte effective de ce
- * mécanisme (vs un enregistrement manuel sur le {@code StepEventBus}) reste à valider par le spike côté
- * {@code qa-test}. Nécessite un constructeur public sans argument (fourni par défaut).
+ * {@code META-INF/services/net.thucydides.model.steps.StepListener}. Découverte par la seule présence
+ * du jar <b>confirmée empiriquement</b> via le projet consommateur {@code qa-test} (cf. D16) : le DOM
+ * brut est effectivement capté à l'exécution. Nécessite un constructeur public sans argument (fourni
+ * par défaut).
  *
  * <p>Robuste par construction : si le driver est absent/fermé ou que la capture lève, on ne mémorise rien
  * et {@link TestFailureManager} retombe sur la source Serenity (repli — option C).

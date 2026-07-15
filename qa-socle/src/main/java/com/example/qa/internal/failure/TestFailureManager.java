@@ -14,6 +14,8 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import net.serenitybdd.model.environment.EnvironmentSpecificConfiguration;
 import net.thucydides.core.steps.BaseStepListener;
@@ -255,8 +257,9 @@ public class TestFailureManager implements TestExecutionListener {
      * <b>repli</b> sur la source HTML stockée par Serenity (option C : vue « code » Prism, échappée).
      */
     private static String failingStepHtml(TestOutcome outcome) {
-        return RawDomCaptureListener.consumeCapturedDom()
+        String html = RawDomCaptureListener.consumeCapturedDom()
                 .orElseGet(() -> failingStepHtmlFromSerenity(outcome));
+        return maskPasswordInputs(html);
     }
 
     /** Repli (option C) : dernière source HTML stockée par Serenity pour la step en échec. */
@@ -270,6 +273,67 @@ public class TestFailureManager implements TestExecutionListener {
 
     private static boolean isFailing(TestStep step) {
         return Boolean.TRUE.equals(step.isFailure()) || Boolean.TRUE.equals(step.isError());
+    }
+
+    // ============================================================================================
+    // Masquage best-effort du DOM brut : les champs mot de passe reflétés dans le markup
+    // ============================================================================================
+
+    /** Balise {@code <input …>} complète (attributs jusqu'au {@code >}), insensible à la casse. */
+    private static final Pattern INPUT_TAG = Pattern.compile("<input\\b[^>]*>", Pattern.CASE_INSENSITIVE);
+
+    /** Détecte {@code type=password} dans une balise (valeur avec ou sans guillemets, espaces tolérés). */
+    private static final Pattern PASSWORD_TYPE =
+            Pattern.compile("type\\s*=\\s*[\"']?password", Pattern.CASE_INSENSITIVE);
+
+    /** Capture l'attribut {@code value=…} : groupe 1 = {@code value=}, groupe 2 = valeur (quotée ou non). */
+    private static final Pattern VALUE_ATTR =
+            Pattern.compile("(value\\s*=\\s*)(\"[^\"]*\"|'[^']*'|[^\\s>]+)", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Masque, dans le DOM brut, la {@code value} des champs {@code <input type="password">} — seul cas
+     * réaliste de fuite d'un secret dans le markup après {@code type(By, Secret)} (reflet du binding JS
+     * dans l'attribut ; le navigateur ne sérialise pas toujours la saisie, d'où un traitement
+     * <b>best-effort</b>). La valeur est remplacée par autant d'étoiles que sa longueur, guillemets
+     * préservés. {@code null}/vide renvoyé tel quel ; les autres champs restent intacts.
+     */
+    static String maskPasswordInputs(String html) {
+        if (html == null || html.isEmpty()) {
+            return html;
+        }
+        Matcher tags = INPUT_TAG.matcher(html);
+        StringBuilder out = new StringBuilder(html.length());
+        while (tags.find()) {
+            String tag = tags.group();
+            if (PASSWORD_TYPE.matcher(tag).find()) {
+                tag = maskValueAttribute(tag);
+            }
+            tags.appendReplacement(out, Matcher.quoteReplacement(tag));
+        }
+        tags.appendTail(out);
+        return out.toString();
+    }
+
+    /** Remplace le contenu de chaque {@code value=…} d'une balise par des étoiles (guillemets gardés). */
+    private static String maskValueAttribute(String inputTag) {
+        Matcher m = VALUE_ATTR.matcher(inputTag);
+        StringBuilder out = new StringBuilder(inputTag.length());
+        while (m.find()) {
+            String replacement = m.group(1) + stars(m.group(2));
+            m.appendReplacement(out, Matcher.quoteReplacement(replacement));
+        }
+        m.appendTail(out);
+        return out.toString();
+    }
+
+    /** Étoiles de la longueur du contenu, en conservant d'éventuels guillemets englobants. */
+    private static String stars(String rawValue) {
+        char quote = rawValue.charAt(0);
+        if ((quote == '"' || quote == '\'') && rawValue.length() >= 2
+                && rawValue.charAt(rawValue.length() - 1) == quote) {
+            return quote + "*".repeat(rawValue.length() - 2) + quote;
+        }
+        return "*".repeat(rawValue.length());
     }
 
     // ============================================================================================
