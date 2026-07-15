@@ -1,6 +1,8 @@
 package com.example.qa.api.data;
 
 import java.nio.file.Path;
+import com.example.qa.internal.data.CsvFileReaderWriter;
+import com.example.qa.internal.data.ExcelFileReaderWriter;
 
 /**
  * Factory <b>publique</b> des gestionnaires de données : <b>seul</b> point d'accès aux implémentations
@@ -13,12 +15,11 @@ import java.nio.file.Path;
  * return data.readRows("chien").stream();
  * }</pre>
  *
- * <p>Squelette — signatures arrêtées (étape 6), corps réel à fournir (étape 8).
+ * <p>La factory se contente de <b>déléguer</b> à l'implémentation adéquate (câblage définitif) ; la
+ * lecture/écriture elle-même reste à fournir à l'étape 8 (les impls lèvent {@code UnsupportedOperationException}
+ * en attendant).
  */
 public final class DataFiles {
-
-	/** Message des fabriques non encore implémentées (domaine data à fournir à l'étape 8). */
-	private static final String A_FOURNIR = "DataFileManager non implémenté (domaine data — à fournir étape 8)";
 
 	private DataFiles() {
 	}
@@ -30,7 +31,7 @@ public final class DataFiles {
 	 * @return un {@link DataFileManager} adossé à Excel
 	 */
 	public static DataFileManager excel(Path file) {
-		throw new UnsupportedOperationException(A_FOURNIR);
+		return new ExcelFileReaderWriter(file);
 	}
 
 	/**
@@ -41,7 +42,7 @@ public final class DataFiles {
 	 * @return un {@link DataFileManager} adossé à Excel chiffré
 	 */
 	public static DataFileManager excel(Path file, String password) {
-		throw new UnsupportedOperationException(A_FOURNIR);
+		return new ExcelFileReaderWriter(file, password);
 	}
 
 	/**
@@ -51,7 +52,7 @@ public final class DataFiles {
 	 * @return un {@link DataFileManager} adossé à CSV
 	 */
 	public static DataFileManager csv(Path file) {
-		throw new UnsupportedOperationException(A_FOURNIR);
+		return new CsvFileReaderWriter(file);
 	}
 
 	/**
@@ -62,6 +63,6 @@ public final class DataFiles {
 	 * @return un {@link DataFileManager} adossé à CSV
 	 */
 	public static DataFileManager csv(Path file, char delimiter) {
-		throw new UnsupportedOperationException(A_FOURNIR);
+		return new CsvFileReaderWriter(file, delimiter);
 	}
 }
