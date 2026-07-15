@@ -33,7 +33,7 @@ public interface DataFileManager {
 	List<Map<String, String>> readRows();
 
 	/**
-	 * Lit toutes les lignes d'une source nommée (nom de feuille Excel ; ignoré/òu nom logique en CSV).
+	 * Lit toutes les lignes d'une source nommée (nom de feuille Excel ; ignoré en CSV).
 	 *
 	 * @param source nom de la feuille (Excel) à lire
 	 * @return les lignes, clé = en-tête de colonne
