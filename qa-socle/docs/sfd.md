@@ -42,7 +42,7 @@ capture d'échec, journalisation, gestion d'erreurs, configuration, gouvernance 
 
 ### 1.4 Documents de référence
 
-- [decisions.md](decisions.md) — registre des décisions d'architecture (D1…D20, D6-bis, D16-bis).
+- [decisions.md](decisions.md) — registre des décisions d'architecture (D1…D22, D6-bis, D16-bis, D22-bis).
 - [roadmap.md](roadmap.md) — séquence de construction et statut d'avancement.
 - [README](../../README.md) — convention de nommage des résultats, adoption.
 
@@ -68,7 +68,8 @@ Deux sous-arbres de visibilité (D15) :
   valeur, façades, exceptions).
 - `com.example.qa.internal.<domaine>` — **implémentations et moteurs**, non destinés à l'extension.
 
-Domaines fonctionnels : `sync`, `data`, `secret`, `reporting`, `failure`, `log`, `exception`.
+Domaines fonctionnels : `sync`, `data`, `secret`, `reporting`, `failure`, `assertion` (soft-assert,
+D22-bis — entièrement `internal`), `log`, `exception`.
 
 ### 2.2 Principes directeurs (transverses)
 
@@ -88,8 +89,10 @@ Domaines fonctionnels : `sync`, `data`, `secret`, `reporting`, `failure`, `log`,
 `sync`, `data`, `secret`, `reporting`, `log`, `exception`, `failure`, ainsi que les **contrats de sortie
 versionnés** (dossier `KO__` D8/D16, format de masquage `Secret` D12). Gel **pré-1.0.0** = marqueur
 d'intention (ajustable si l'étape 8 révèle un vrai besoin, tracé) ; verrou dur japicmp à **1.0.0**
-(étape 10). **Implémentation (étape 8) démarrée** : le **masquage du type `Secret`** (domaine MASK) et la
-**capture d'échec** (domaine FAIL — `TestFailureManager` + capture du DOM brut `RawDomCaptureListener`)
+(étape 10). **Implémentation (étape 8) démarrée** : le **masquage du type `Secret` et du DOM capturé**
+(domaine MASK — champs `type=password` masqués avant écriture du dump), la **capture d'échec** (domaine
+FAIL — `TestFailureManager` + capture du DOM brut `RawDomCaptureListener`) et l'**infrastructure
+soft-assert** (BF-SYNC-16 — `SoftAssertions`/`SoftAssertionExtension`, `internal.assertion`, D22-bis)
 sont **implémentés et testés** ; les autres composants (`sync`, `data`, retrait de secret, `reporting`,
 `log`) restent des coquilles typées. Cette SFD est le contrat que l'étape 8 honore composant par composant.
 
@@ -113,10 +116,10 @@ mais avec une **synchronisation intégrée à chaque méthode**, robuste aux SPA
 | **BF-SYNC-05** | La recherche imbriquée **doit** se faire via `within(By)` qui renvoie une vue bornée aux descendants (type covariant `WebSync`/`MobileSync`), en ré-résolvant des `By` relatifs (jamais stale). |
 | **BF-SYNC-06** | Le socle **doit** offrir les **actions communes** : `click`, `type(By, CharSequence…)`, `typeAndEnter`, `clear`. |
 | **BF-SYNC-07** | Le socle **doit** offrir les **lectures communes** : texte (`getText`, `getTextValue`, `getValue`), métadonnées (`getTagName`, `getAttribute`, `getDomAttribute`, `getDomProperty`, `getAriaRole`, `getAccessibleName`). |
-| **BF-SYNC-08** | Le socle **doit** offrir les **états booléens** : `isSelected`, `isEnabled`, `isDisabled`, `isDisplayed`, `isCurrentlyVisible`, `isClickable`, `isPresent`, `hasFocus`, `containsText`, `containsOnlyText`, `containsValue`. |
+| **BF-SYNC-08** | Le socle **doit** offrir les **états booléens** (état courant, ne lèvent jamais — absent → `false`) : `isSelected`, `isEnabled`, `isDisabled`, `isVisible`, `isCurrentlyVisible`, `isClickable`, `isPresent`, `hasFocus`, `containsText`, `containsOnlyText`, `containsValue`. *(nom aligné Serenity : `isVisible`, ex-`isDisplayed`, cf. D3 maj)* |
 | **BF-SYNC-09** | Le socle **doit** offrir des **assertions d'état** (`shouldBeVisible`, `shouldBePresent`, `shouldContainText`, … et leurs négations) qui **lèvent** en cas d'échec et **retournent `void`** (no-leak ; contrat « vérifie ou lève », jamais de `boolean` — le besoin booléen est couvert par les prédicats `is…`/`contains…`, BF-SYNC-08). *(D22)* |
 | **BF-SYNC-10** | Le socle **doit** offrir **géométrie/capture** (`getLocation`, `getSize`, `getRect`, `getScreenshotAs`), **collections sans handle** (`count`, `getTexts`) et **attentes explicites** (`waitUntilVisible/Present/NotVisible/Clickable/Enabled/Disabled`, `waitForElement`, `waitForElementToDisappear`). |
-| **BF-SYNC-11** | `WebSync` **doit** ajouter le **spécifique web** : `submit`, `doubleClick`, `contextClick`, `typeAndTab`, `setWindowFocus`, listes `<select>` (sélection/désélection par libellé/valeur/index, lecture des options/sélections), DOM/CSS (`getTextContent`, `getAriaLabel`, `getCssValue`, `hasClass`, `containsElements`). |
+| **BF-SYNC-11** | `WebSync` **doit** ajouter le **spécifique web** : `submit`, `doubleClick`, `contextClick`, `typeAndTab`, `setWindowFocus`, listes `<select>` (`selectByVisibleText`/`selectByValue`/`selectByIndex` et déselections, `getSelectOptions`/`getSelectOptionValues`, `getFirstSelectedOptionVisibleText`/`getSelectedVisibleTexts`/`getFirstSelectedOptionValue`/`getSelectedValues`, `containsSelectOption`), DOM/CSS (`getTextContent`, `getAriaLabel`, `getCssValue`, `hasClass`, `containsElements`). *(noms alignés Serenity, D3 maj)* |
 | **BF-SYNC-12** | `MobileSync` **doit** ajouter les **gestes mobiles** : tap/doubleTap/longPress, swipe (coordonnées et par `By`+`SwipeDirection`), scroll/scrollTo, pinch/zoom, dragAndDrop ; clavier (`hideKeyboard`, `isKeyboardShown`, `pressKey`) ; orientation (`rotatePortrait/Landscape`, `getOrientation`) ; contexte natif/webview (`switchToNativeContext`, `switchToWebViewContext`, `getCurrentContext`) ; cycle de vie app (`launchApp`, `runAppInBackground`, `resetApp`) ; fichiers (`pushFile`, `pullFile`). |
 | **BF-SYNC-13** | Le driver mobile **doit** être obtenu depuis le `WebDriver` Serenity du thread courant et casté **en interne** en `AppiumDriver` : **aucun type Appium** ne **doit** apparaître dans l'API publique. |
 | **BF-SYNC-14** | La saisie d'une **valeur sensible** **doit** se faire via `type(By, Secret)` : le clair (`secret.value()`) est saisi dans le DOM, mais seul le rendu **masqué** apparaît dans le log d'action. C'est le **seul** point de déballage d'un `Secret` pour la saisie. |
@@ -130,6 +133,16 @@ réimplémenté par les sous-classes (D3 maj). À l'intérieur, l'action délèg
 **Critères d'acceptation** (étape 8) : un test contre un site bidon valide (a) la réévaluation du
 locator après mutation DOM sans changement d'URL, (b) les deux messages différenciés, (c) l'absence de
 tout `WebElement` exposé dans l'API.
+
+**État (impl 2026-07-13)** : **domaine SYNC web implémenté** (78 méthodes ; gestes `MobileSync` différés,
+hors périmètre). Réalisé : moteur `fluentWait(By, Function)` + `poll` (testé), **profils `SyncTimeout`**
+(`SHORT/MEDIUM/LONG/EXTRA_LONG`, clés `qa.sync.timeout.*`, cf. `serenity.conf.example`), **diagnostic
+actif** (`SyncCondition` : `ABSENT/STALE/HIDDEN/DISABLED/OUT_OF_BOUNDS/INTERCEPTED`, message multi-codes),
+toute la surface + `within` (deux-temps, no-leak), `type(By, Secret)`, les `should…` branchés sur le
+soft-assert via `tryAssert` (testé). **Noms alignés strictement sur Serenity** (6 renommages, cf. D3 maj).
+**Reste (lot 2c)** : flag JS de re-render, neutralisation C8 (`serenity.conf`), `pageLoadTimeout`,
+validation bout-en-bout `qa-test`. BF-SYNC-15 (messages différenciés) : les libellés sont désormais portés
+par `SyncCondition` (message multi-codes), le principe « absent vs instable » reste.
 
 **Frontière API (tranchée, D15 — option A)** : `AbstractSyncManager` reste `internal`, mais ses méthodes
 publiques (héritées par `WebSync`/`MobileSync`) sont **gelées** → garde-fou japicmp **élargi** (étape 10).
@@ -215,8 +228,11 @@ en rotation → fuite de longueur sans impact ; la comparaison stricte passe par
 
 **État** : `Secret` est **implémenté et testé** (`SecretMaskingTest`, format D12). `TestFailureManager`
 écrit le contenu en s'appuyant sur le masquage **à la source** (`toString()`, descriptions de steps déjà
-masquées). **Reste** (étape 7) : le test « zéro clair » (BF-MASK-06) et le traitement de la **fuite du DOM
-brut** — la capture option A (D16) écrit du **texte de page arbitraire**, **non couvert par `Secret`**.
+masquées) et **masque la `value` des champs `<input type="password">`** du DOM capté avant écriture du
+dump (2026-07-12, `maskPasswordInputs` + `PasswordMaskingTest` — cf. D16 amendé ; le registre
+`ThreadLocal` envisagé a été écarté). **Risque résiduel** (secret reflété hors champ password) tracé
+dans `points-attention.md`. **Reste** : la validation « zéro clair » **bout-en-bout** (BF-MASK-06) sur
+vrai navigateur — projet consommateur dédié (D20), au pilote.
 
 **Critères d'acceptation** (étape 7/8) : test prouvant l'absence de toute occurrence en clair du secret
 dans `ERROR.log`, `FAIL.log`, le dump HTML et la sortie console, y compris en cas de log accidentel.
@@ -271,9 +287,10 @@ nommés selon D8, masqués, indépendamment de tout `logback.xml` local ; un tes
 deux échecs simultanés (parallèle) n'entrent pas en collision (chemins uniques).
 
 **État** : composant **implémenté et testé** (`TestFailureArtefactsTest` : nommage, `sanitize`,
-`failingLeaf`, écriture des 3 fichiers ; capture du DOM brut via `RawDomCaptureListener`).
+`failingLeaf`, écriture des 3 fichiers ; capture du DOM brut via `RawDomCaptureListener` ; masquage des
+champs password du dump via `maskPasswordInputs` + `PasswordMaskingTest`).
 **✅ Point ouvert clos** : noms de clés + défauts figés (constantes `TestFailureManager`) et contrat de
-sortie gravé (D8). **Reste (étape 7)** : test « zéro clair » + audit de la fuite du DOM brut (BF-MASK-06).
+sortie gravé (D8). **Reste** : validation « zéro clair » bout-en-bout au pilote (BF-MASK-06, D20).
 
 ---
 
@@ -389,10 +406,10 @@ D21, D7, roadmap étapes 2 et 10.
 
 | Domaine | Besoins | Composants | Décisions | Étape roadmap | État signatures |
 |---|---|---|---|---|---|
-| SYNC | BF-SYNC-01…16 | `WebSync`, `MobileSync`, `AbstractSyncManager`, `SwipeDirection` | D3, D4, D22 | 6 → 8 | ✅ figées (soft assert = comportement étape 8) |
+| SYNC | BF-SYNC-01…16 | `WebSync`, `MobileSync`, `AbstractSyncManager`, `SwipeDirection`, **`SyncTimeout`** (api) ; `SyncCondition`, `SoftAssertions`/`SoftAssertionExtension` (internal) | D3, D4, D22, D22-bis | 6 → 8 | ✅ **web implémenté** (2026-07-13 : moteur, surface, `within`, `should…`/soft-assert, profils, diagnostic) ; noms alignés Serenity ; reste flag JS/C8/pageLoad (2c) + mobile différé |
 | DATA | BF-DATA-01…09 | `DataFileManager`, `DataFiles`, `Abstract…`, `Excel`/`Csv…` | D5 | 6 → 8 | ✅ figées |
 | SECRET | BF-SEC-01…06 | `SecretManager`, **`SecretManagers`** (factory), `CyberArkApiClient` | D12 | 6 → 8 | ✅ figées + factory |
-| MASK | BF-MASK-01…06 | `Secret` (+ `TestFailureManager`) | D12, D14, D16-bis | 6/7 → 8 | ✅ signatures + format D12 + **masquage implémenté & testé** |
+| MASK | BF-MASK-01…06 | `Secret` (+ `TestFailureManager`) | D12, D14, D16, D16-bis | 6/7 → 8 | ✅ signatures + format D12 + **masquage `Secret` et DOM (password) implémentés & testés** ; « zéro clair » e2e au pilote |
 | REPORTING | BF-REP-01…10 | `ReportingManager`, `TestExecutionReport`, `ExecutionStatus`, `AlmApiClient` (tous **`internal`**) | D13 | 6 → 8 | ✅ figées + **AUTO/internal** (pas de factory) |
 | FAIL | BF-FAIL-01…08 | `TestFailureManager`, `RawDomCaptureListener` | D8, D16, D16-bis | 6 → 8 | ✅ hook + clés + contrat gravé ; **impl + tests faits** (DOM brut option A) |
 | LOG | BF-LOG-01…05 | `LogbackConfigurator` | D14, D16-bis, D17 | 6 → 8 | ✅ constantes + scope tranché (`compile` + ArchUnit) |

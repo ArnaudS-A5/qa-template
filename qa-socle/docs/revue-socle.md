@@ -9,9 +9,14 @@
 > corps volontairement vides (`return null` / `void`). Les corps vides **ne sont pas** comptés comme des
 > défauts.
 >
-> **Vérifié factuellement** : `./mvnw clean test` → **BUILD SUCCESS**, **10 tests verts** (~1,8 s).
-> `grep` : 0 `throws` en signature, 0 `static` mutable, collision `TestExecutionResult` confirmée —
-> **résolue le 2026-06-25** (C3 : type socle renommé `TestExecutionReport`).
+> **Vérifié factuellement** (au moment de la revue) : `./mvnw clean test` → **BUILD SUCCESS**,
+> **10 tests verts** (~1,8 s). `grep` : 0 `throws` en signature, 0 `static` mutable, collision
+> `TestExecutionResult` confirmée — **résolue le 2026-06-25** (C3 : type socle renommé
+> `TestExecutionReport`).
+>
+> **Re-vérifié le 2026-07-12** (doc vivante, chapitre 9 à jour) : **35 tests verts** — l'implémentation
+> a depuis livré FAILURE (artefacts + DOM brut), le masquage `Secret` + DOM (`type=password`) et
+> l'infrastructure soft-assert (`internal.assertion`).
 
 ---
 
@@ -44,17 +49,18 @@ points « ultra-critiques » de cette revue sont des **pièges d'implémentation
 qa-parent (pom, agrégateur, versioning centralisé, enforcer, wrapper 3.9.9)
 └── qa-socle (jar)
     ├── api/         ← contrat public consommé par les 17 projets (frozen, périmètre japicmp)
-    │   ├── sync       WebSync, MobileSync, SwipeDirection
+    │   ├── sync       WebSync, MobileSync, SwipeDirection, SyncTimeout
     │   ├── data       DataFileManager (interface), DataFiles (factory)
     │   ├── secret     SecretManager (interface), SecretManagers (factory), Secret (valeur)
     │   └── exception  QaToolkitException + 4 sous-types
     └── internal/    ← moteurs & impls, non contractuels (libres de changer*)
-        ├── sync       AbstractSyncManager
+        ├── sync       AbstractSyncManager, SyncCondition
         ├── data       AbstractDataFileManager, ExcelFileReaderWriter, CsvFileReaderWriter
         ├── secret     CyberArkApiClient
         ├── reporting  ReportingManager (interface), AlmApiClient, TestExecutionReport, ExecutionStatus
-        ├── failure    TestFailureManager (+ META-INF/services)
-        └── log         LogbackConfigurator
+        ├── failure    TestFailureManager, RawDomCaptureListener (+ META-INF/services ×2)
+        ├── assertion  SoftAssertions, SoftAssertionExtension (+ META-INF/services, D22-bis)
+        └── log        LogbackConfigurator
 ```
 > *exception D15 : les **méthodes publiques** d'`AbstractSyncManager`, héritées par `WebSync`/`MobileSync`,
 > sont gelées malgré le package `internal` (garde-fou japicmp élargi).
@@ -62,7 +68,8 @@ qa-parent (pom, agrégateur, versioning centralisé, enforcer, wrapper 3.9.9)
 **La répartition des packages est cohérente avec l'intention** : un découpage **par visibilité** (api /
 internal) **puis par domaine**, ce qui est exactement la frontière que japicmp surveillera (étape 10) et
 qu'ArchUnit pourra protéger. Les noms de packages indiquent sans ambiguïté la responsabilité. Le
-classement réel des 25 types **correspond au tableau D15 à 100 %** (vérifié).
+classement réel des **29 types** (25 à la revue initiale, +2 `internal.assertion` le 2026-07-12,
++2 `sync` — `SyncTimeout`/`SyncCondition` — le 2026-07-13) **correspond au tableau D15 à 100 %** (re-vérifié).
 
 **Performance structurelle vs rigidité.** La structure est **plate et lisible** (1 niveau api/internal
 + 1 niveau domaine), sans sur-ingénierie : pas de JPMS, pas de package `spi`, pas de couche de config
@@ -75,23 +82,28 @@ maison. C'est le bon niveau d'abstraction pour une équipe peu mature. Les seuls
 
 | Type | Package | Nature / modificateurs | Fidélité décision | État |
 |---|---|---|---|---|
-| `WebSync` | api.sync | `public class extends AbstractSyncManager`, méthodes non-`final` | D3/D4/D15 ✅ | coquille |
-| `MobileSync` | api.sync | `public class extends AbstractSyncManager`, non-`final` | D4 ✅ | coquille (impl différée) |
+| `WebSync` | api.sync | `public class extends AbstractSyncManager`, méthodes non-`final` | D3/D4/D15 ✅ | **implémenté (web)** |
+| `MobileSync` | api.sync | `public class extends AbstractSyncManager`, non-`final` | D4 ✅ | surface héritée impl. ; **gestes différés** |
 | `SwipeDirection` | api.sync | `public enum` (UP/DOWN/LEFT/RIGHT) | D4 ✅ neutre | complet |
-| `AbstractSyncManager` | internal.sync | `public abstract class`, `fluentWait` **`protected`** | D3 ✅ | coquille |
+| `SyncTimeout` | api.sync | `public enum` (SHORT/MEDIUM/LONG/EXTRA_LONG) + clé/défaut | D3 maj ✅ | **complet** |
+| `AbstractSyncManager` | internal.sync | `public abstract class`, `fluentWait(By,Function)` **`protected`** | D3 ✅ | **implémenté (web)** |
+| `SyncCondition` | internal.sync | `public enum` (6 conditions ≡ exceptions) + `classify` | D3 maj ✅ | **complet + testé** |
 | `DataFileManager` | api.data | `public interface` (sans marqueur `I`) | D5/D12 ✅ | signé |
 | `DataFiles` | api.data | `public final class`, ctor `private`, factory `static` | D15 ✅ | coquille |
 | `AbstractDataFileManager` | internal.data | `public abstract class implements DataFileManager`, primitives `protected abstract` | D5 ✅ template method | coquille |
 | `ExcelFileReaderWriter` / `CsvFileReaderWriter` | internal.data | `public class extends Abstract…` | D5/D14 ✅ | coquille |
 | `SecretManager` | api.secret | `public interface` neutre | D12 ✅ | signé |
 | `SecretManagers` | api.secret | `public final class`, ctor `private`, `get()` neutre `static` | D12/D15 ✅ idiome `Executors` | coquille |
-| `Secret` | api.secret | `public final class`, champ `private final`, ctor `private`, `of()` | D12/MASK ✅ | partiel |
+| `Secret` | api.secret | `public final class`, champ `private final`, ctor `private`, `of()` | D12/MASK ✅ | **implémenté + testé** (format D12) |
 | `CyberArkApiClient` | internal.secret | `public class implements SecretManager` | D12/D14 ✅ | coquille |
 | `ReportingManager` | internal.reporting | `public interface` (**internal**, seam de swap) | D13/D15 ✅ | signé |
 | `AlmApiClient` | internal.reporting | `public class implements ReportingManager` | D13/D14 ✅ | coquille |
-| `TestExecutionReport` | internal.reporting | `public final class`, champs `private final`, `of()` | D13 ✅ immuable extensible (renommé depuis `TestExecutionResult`, C3) | partiel |
+| `TestExecutionReport` | internal.reporting | `public final class`, champs `private final`, `of()` | D13 ✅ immuable extensible (renommé depuis `TestExecutionResult`, C3) | complet |
 | `ExecutionStatus` | internal.reporting | `public enum` (IN_PROGRESS/PASSED/FAILED) | D13 ✅ | complet |
-| `TestFailureManager` | internal.failure | `public class implements TestExecutionListener`, constantes `static final` | D5/D16 ✅ | coquille + clés |
+| `TestFailureManager` | internal.failure | `public class implements TestExecutionListener`, constantes `static final` | D5/D16 ✅ | **implémenté + testé** (artefacts `KO__`, masquage password du DOM) |
+| `RawDomCaptureListener` | internal.failure | `public class extends StepListenerAdapter`, `ThreadLocal` purgé | D16 ✅ (option A) | **implémenté** (confirmé via `qa-test`) |
+| `SoftAssertions` | internal.assertion | `public final class`, ctor `private`, collecteur `ThreadLocal` `static` | D22-bis ✅ | **implémenté + testé** |
+| `SoftAssertionExtension` | internal.assertion | `public class implements AfterTestExecutionCallback` | D22-bis ✅ | **implémenté** (activation prouvée) |
 | `LogbackConfigurator` | internal.log | `public final class`, constantes `static final` | D16-bis/D17 ✅ | coquille |
 | `QaToolkitException` | api.exception | `public class extends RuntimeException` (concrète) | D18 ✅ | **complet** |
 | `SyncException` / `DataFileException` / `SecretException` / `ReportingException` | api.exception | `public class extends QaToolkitException` | D18 ✅ | **complet** |
@@ -128,9 +140,9 @@ réimplémenté). C'est exactement ce que la doctrine impose.
   (BF-DATA-04) **documenté** côté interface — à honorer à l'impl.
 
 ### 4.3 SECRET + MASK
-- `Secret` : `toString()` **délègue déjà** à `masked()`. La **prévention de fuite est garantie
-  structurellement** dès maintenant (même si `masked()` renvoie `null` tant que l'étape 8 n'est pas
-  faite) : un secret loggué passera toujours par `toString()`. Bon design.
+- `Secret` : `toString()` **délègue** à `masked()` — désormais **implémenté et testé** (format D12 :
+  2 caractères + étoiles proportionnelles + 16 hexa SHA-256). La **prévention de fuite est garantie
+  structurellement** : un secret loggué passera toujours par `toString()`. Bon design.
 - `SecretManagers.get()` neutre, cache `CyberArkApiClient`. Le swap d'outil = 1 ligne interne. ✅
 
 ### 4.4 REPORTING (entièrement internal — AUTO)
@@ -169,7 +181,7 @@ réimplémenté). C'est exactement ce que la doctrine impose.
 | F7 | **Masquage garanti structurellement** (`toString()`→`masked()`) | Fuite de secret improbable même par log accidentel |
 | F8 | **Versioning centralisé** + enforcer + wrapper en place | Reproductibilité, M4-safe, 1 ligne à bumper |
 | F9 | **Traçabilité documentaire exceptionnelle** (BF-* ↔ D* ↔ roadmap ↔ code) | Onboarding et maintenance facilités |
-| F10 | **Build vert, rapide, déterministe** (10 tests) | Base saine pour démarrer l'étape 8 |
+| F10 | **Build vert, rapide, déterministe** (10 tests à la revue ; 35 au 2026-07-12) | Base saine pour démarrer l'étape 8 |
 
 ### 5.2 Points faibles (non bloquants — à corriger au fil de l'eau)
 
@@ -190,7 +202,7 @@ réimplémenté). C'est exactement ce que la doctrine impose.
 
 | # | Risque | Gravité | Statut |
 |---|---|---|---|
-| C1 | **Soft-assert (D22) impossible à faire échouer un test depuis un `TestExecutionListener`** : ce hook **observe**, il ne **vote** pas le verdict | 🔴 Bloquant si non anticipé | ✅ Levé (D22-bis : spike séquentiel + parallèle → mécanisme = extension Jupiter `AfterTestExecutionCallback`, pas le listener ; **impl** soft-assert = étape 8, cf. ch.9 #3) |
+| C1 | **Soft-assert (D22) impossible à faire échouer un test depuis un `TestExecutionListener`** : ce hook **observe**, il ne **vote** pas le verdict | 🔴 Bloquant si non anticipé | ✅ Terminé (D22-bis spiké puis **infrastructure implémentée le 2026-07-12** : `SoftAssertions` + `SoftAssertionExtension`, activation prouvée ; reste le branchement `should…` avec SYNC, cf. ch.9 #3/#4) |
 | C2 | **Lecture du `TestOutcome` Serenity depuis le listener JUnit** : `StepEventBus` est lié au thread du test ; en parallèle / au mauvais instant, l'outcome peut être absent | 🔴 Make-or-break de tout le domaine FAILURE | ✅ Terminé |
 | C3 | ~~**Collision de nom `TestExecutionResult`** (JUnit vs socle `internal.reporting`)~~ — ✅ **résolu** : type socle renommé `TestExecutionReport` (2026-06-25) | ✅ Levé | ✅ Terminé |
 | C4 | **Messages différenciés de synchro** (« mauvaise page » / « application instable ») = **contrat de fait** consommé par `qa-maintenance` (D9) | 🔴 Si écrits en texte libre, la classification d'échec casse silencieusement | ⬜ Ouvert |
@@ -396,23 +408,24 @@ d'entreprise** imposé par la DSI (chaîne d'héritage unique en Maven).
 |---|---|---|
 | a) | **Capture des sources (DOM)** — `RawDomCaptureListener`, écrit le `.html` | ✅ fait/commité |
 | b) | **Le type `Secret` et son masquage** (`masked()` = 2 car. + étoiles + sha256) | ✅ fait/testé |
-| c) | **Intégrer le masquage *dans* `TestFailureManager`** (aucun secret en clair dans `ERROR.log`/`FAIL.log`/dump) | ⬜ pas fait |
+| c) | **Intégrer le masquage *dans* `TestFailureManager`** (aucun secret en clair dans `ERROR.log`/`FAIL.log`/dump) | ✅ fait/testé (2026-07-12 : `maskPasswordInputs`, cf. #9) |
 
-> ⚠️ **(a) et (c) sont en tension** : le DOM brut de l'option A est du **texte de page arbitraire** ; un
+> ⚠️ **(a) et (c) étaient en tension** : le DOM brut de l'option A est du **texte de page arbitraire** ; un
 > token / champ caché / clé JS peut s'y trouver **en clair**, et `Secret` ne couvre que ce qui passe par
-> lui. La tâche (c) — ligne 9 ci-dessous — doit traiter explicitement cette fuite potentielle.
+> lui. Traité (2026-07-12) par le **masquage des champs `type=password`** (cf. #9 et D16 amendé) ;
+> le **risque résiduel** (secret reflété hors champ password) est tracé dans `points-attention.md`.
 
 | # | Élément | Statut | ⚠️ Point ultra-critique | Vigilance respectée ? |
 |---|---|---|---|---|
 | 1 | FAILURE — lecture du `TestOutcome` au bon thread (fondation du domaine) | ✅ Terminé | **C2** : outcome lié au thread du test, absent en parallèle si mal lu | ⏳ revue finale |
-| 2 | FAILURE — capture d'échec : 3 fichiers, feuille KO, `sanitize`, **DOM brut (option A)** | ✅ Terminé (DOM brut **confirmé via `qa-test`**) | **C2** (pont ThreadLocal même thread) + **DOM brut = texte non masqué** (cf. #9) | ✓ C2 (lecture validée D22-bis) ; 🔴 masquage DOM brut → #9 |
-| 3 | FAILURE — **soft-assert (D22-bis)** : extension Jupiter + collecteur ThreadLocal + autodetection Parent POM | ⬜ impl (piège **C1 levé** : mécanisme tranché + spiké D22-bis) | **C1** : un listener observe, ne vote pas ; l'échec passe par l'extension Jupiter | ⏳ revue finale |
-| 4 | **SYNC `WebSync`** : `fluentWait` + flag JS + surface | ⬜ | **C4** : messages « mauvaise page »/« instable » = contrat `qa-maintenance` → constantes + test ; + no-leak (`By`) | ⏳ revue finale |
+| 2 | FAILURE — capture d'échec : 3 fichiers, feuille KO, `sanitize`, **DOM brut (option A)** | ✅ Terminé (DOM brut **confirmé via `qa-test`**) | **C2** (pont ThreadLocal même thread) + **DOM brut = texte non masqué** (cf. #9) | ✓ C2 (lecture validée D22-bis) ; ✓ masquage DOM brut (fait, #9) |
+| 3 | FAILURE — **soft-assert (D22-bis)** : extension Jupiter + collecteur ThreadLocal + autodetection Parent POM | ✅ Terminé — **infrastructure** (2026-07-12 : `SoftAssertions` + `SoftAssertionExtension`, activation prouvée) ; branchement `should…` → #4 | **C1** : un listener observe, ne vote pas ; l'échec passe par l'extension Jupiter | ✓ C1 (extension vote l'échec, prouvé empiriquement) |
+| 4 | **SYNC `WebSync`** : `fluentWait` + surface + `within` + `should…`/soft-assert | ✅ **web fait** (2026-07-13, cf. D3 maj) : moteur `poll` (testé), profils `SyncTimeout`, **diagnostic actif `SyncCondition`**, 78 méthodes, `within` deux-temps, `type(By,Secret)`, `should…` via `tryAssert` (testé), noms alignés Serenity. **Reste (2c)** : flag JS + C8 + `pageLoadTimeout` + tests `qa-test`. Mobile différé | **C4** : libellés désormais portés par `SyncCondition` (codes stables) ; **C8** : facade timeout 0 (une horloge) — validation e2e au pilote | ⏳ revue finale (e2e `qa-test`) |
 | 5 | **Logback** : scope `compile` + `Configurator` + `logback-socle.xml` + services | ⬜ | **C6** : scope `compile` indissociable de la règle ArchUnit | ⏳ revue finale |
 | 6 | **Garde-fous ArchUnit** (static non-final ; ban `ch.qos.logback..` hors `internal.log`) + Surefire `dependenciesToScan` (Parent POM) | ⬜ | **C6** (l'autre moitié du duo) | ⏳ revue finale |
 | 7 | **DATA `DataFileManager`** : Excel chiffré (fixture réelle tôt) + CSV + `getValue` | ⬜ | Frontière **checked→unchecked** (D18), cause conservée | ⏳ revue finale |
 | 8 | **SECRET/MASK** — `masked()` / `sha256Prefix()` du type `Secret` | ✅ + testé | Masquage **à la source**, format D12 figé | ⏳ revue finale |
-| 9 | **SECRET/MASK** — intégration dans `TestFailureManager` + test « zéro clair » + garde-fou `value()` | ⬜ | **Masquage à la source** : masquer avant écriture ; **le DOM brut (option A) échappe à `Secret`** → fuite à traiter ici | ⏳ revue finale |
+| 9 | **SECRET/MASK** — intégration dans `TestFailureManager` + test « zéro clair » + garde-fou `value()` | ✅ Terminé côté socle (2026-07-12) : `maskPasswordInputs` (champs `type=password` → étoiles, best-effort) + `PasswordMaskingTest` (8 cas). **Registre ThreadLocal écarté** (cf. D16 amendé). Restent : « zéro clair » bout-en-bout (pilote, D20) + garde-fou `value()` (ArchUnit, #6) | **Masquage à la source** : masquer avant écriture ; le DOM brut échappait à `Secret` → traité par le blanking password ; **résiduel** : secret reflété hors champ password (cf. `points-attention.md`) | ✓ (résiduel tracé) |
 | 10 | **`CyberArkApiClient`** + branchement `SecretManagers.get()` | ⬜ | WireMock (pas de serveur réel) ; secret jamais loggé | ⏳ revue finale |
 | 11 | **REPORTING AUTO** : listener (`@WithTag` → `publishStart`/`End`) + `AlmApiClient` + auth via `SecretManager` | ⬜ | **C5** : 2ᵉ listener à ajouter au **fichier services EXISTANT**, sinon no-op silencieux | ⏳ revue finale |
 | 12 | Dérives doc **W1–W7** | ✅ Terminé | — | — |

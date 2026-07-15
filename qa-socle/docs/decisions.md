@@ -88,6 +88,48 @@ Deux exigences d'implémentation ajoutées au contrat du `fluentWait` (cf. revue
   du `TimeoutException`) ; la signature maison (`Supplier<T>`) **non** → la boucle doit la mémoriser
   explicitement et la joindre en `cause` de la `SyncException` (cohérent avec D18).
 
+### Mise à jour (implémentation étape 8, 2026-07-13) — modèle réalisé
+
+Le domaine SYNC **web** est implémenté (78 méthodes ; gestes `MobileSync` différés). Choix actés à
+l'implémentation, tous validés en séance :
+
+- **Deux étages d'attente, jamais empilés** :
+  - *chargement de page* : `document.readyState` via la stratégie native
+    `serenity.driver.page.load.strategy=normal` + plafond `qa.sync.pageLoadTimeout` (défaut **2 min**) ;
+  - *résolution/render d'un objet* : le `fluentWait` maison (polling + ré-résolution du `By`).
+  - Le **DOM-stability** (attendre N ms de « silence » du DOM) est **écarté** (non fiable, ajoute des
+    attentes mortes). Pour « attendre qu'une zone soit prête », on attend un **élément témoin** via
+    `fluentWait`.
+- **Profils de timeout `SyncTimeout`** (enum **`api.sync`**, choisi à la construction — `new WebSync()`
+  = `MEDIUM`, `new WebSync(SyncTimeout.LONG)`) : `SHORT/MEDIUM/LONG/EXTRA_LONG` (défauts **5/15/60/120 s**),
+  chacun adossé à une clé `qa.sync.timeout.<profil>` **pilotable** (jamais de durée en dur dans les
+  PageObjects). Pas de catégories libres. Polling `qa.sync.pollingInterval` (250 ms).
+- **Signature du moteur** : la coquille `fluentWait(Duration, Supplier<T>)` (protected, `internal`) est
+  remplacée par **`fluentWait(By, Function<WebElementFacade,T>)`** — le `By` est intrinsèque au moteur
+  (résolution paresseuse + diagnostic). Cœur « pur » testable : `poll(...)` (boucle + absorption des
+  transitoires + `buildSyncException`).
+- **Diagnostic actif au timeout** (`SyncCondition`, enum `internal.sync`) : chaque condition ≡ une
+  exception Selenium (1:1), classée par la **plus spécifique** (`classify`). Au timeout on **sonde
+  l'état réel** dans l'**ordre du flux** `ABSENT → STALE → HIDDEN → DISABLED → OUT_OF_BOUNDS →
+  INTERCEPTED` (interception en dernier, via hit-test JS) et on remonte **toutes** les conditions en
+  défaut : `cause` = dernière exception réelle, message multi-codes `[…]` (contrat `qa-maintenance`),
+  latentes en `suppressed`. Une seule horloge (C8) : facade délégué à timeout **0**.
+- **`within(container)`** = vue bornée **immuable**, résolution **deux-temps** (`resolve(container)` puis
+  `.find(child)`) → no-leak et **localisation du maillon fautif** (container vs child) au débogage.
+- **Assertions `should…`** : branchées sur le **soft-assert** (D22-bis) via le helper `tryAssert`
+  (poll d'un de nos prédicats immédiats → `AssertionError` dans `SoftAssertions.check`). On **ne
+  délègue pas** aux `should*` de Serenity (leurs exceptions sont hétérogènes et incompatibles avec le
+  mode soft). Messages en constantes, lisibles, non verrouillés.
+- **Nommage — alignement strict sur Serenity** : le socle reprend **exactement** le nom de la méthode
+  Serenity/Selenium qu'il appelle (c'est un wrapper de synchro, pas un renommage). 6 divergences
+  corrigées : `isDisplayed→isVisible`, `selectByLabel→selectByVisibleText`,
+  `deselectByLabel→deselectByVisibleText`, `getSelectedLabel→getFirstSelectedOptionVisibleText`,
+  `getSelectedLabels→getSelectedVisibleTexts`, `getSelectedValue→getFirstSelectedOptionValue`.
+- **Prédicats** (`is…`/`contains…`) : **état courant, ne lèvent jamais** (élément absent → `false`).
+- **Reste (lot 2c)** : injection du **flag JS** de re-render, neutralisation C8 dans
+  `serenity.conf.example` (implicit wait 0…), application du `pageLoadTimeout`, validation bout-en-bout
+  au projet `qa-test`.
+
 ## D4 — Abstraction de la synchronisation (web + mobile)
 
 - `AbstractSyncManager` (moteur `fluentWait` + flag JS **et** tout le contrat commun par `By`) →
@@ -430,6 +472,8 @@ Frontière entre le **contrat public** (consommé par les ~17 projets) et l'**in
 | `AlmApiClient` | `internal.reporting` | impl cachée derrière `ReportingManager` |
 | `TestFailureManager` | `internal.failure` | moteur activé par un **hook natif auto-découvert** (cf. D16) ; **aucun type public, aucune annotation**, jamais référencé par le consommateur |
 | `RawDomCaptureListener` | `internal.failure` | `StepListener` Serenity auto-découvert (cf. D16) qui capte le **DOM brut** à l'échec ; **aucun type public**, jamais référencé par le consommateur |
+| `SoftAssertions` | `internal.assertion` | collecteur `ThreadLocal` du soft-assert + point d'entrée `check()` des `should…` (cf. D22-bis) ; **aucun type public** |
+| `SoftAssertionExtension` | `internal.assertion` | extension Jupiter auto-découverte (`AfterTestExecutionCallback`, cf. D22-bis) qui draine le collecteur et **fait échouer** le test en mode soft ; **aucun type public** |
 | `LogbackConfigurator` *(à venir, étape 6/8)* | `internal.log` | mécanisme Logback **auto-activé** (ServiceLoader), **aucun type public**, jamais référencé par le consommateur (cf. D16-bis) |
 
 ### Conséquences
@@ -588,18 +632,26 @@ dépendent. Donc :
 - **mais** changer le **format de sortie** est un **breaking change** (SemVer), même si aucune ligne
   de code consommateur ne change. À traiter comme l'API publique vis-à-vis du garde-fou (étape 10).
 
-### Mise à jour (revue externe 2026-07-07) — masquage du DOM brut (mécanisme, étape 7)
+### Mise à jour (revue externe 2026-07-07, amendée 2026-07-12) — masquage du DOM brut (étape 7)
 
 Le masquage à la source (`Secret#toString()`) protège les steps Serenity, mais **pas** le dump HTML :
 après un `type(By, Secret)`, la valeur en clair peut être **reflétée dans le DOM** (binding
-Angular/React fréquent sur l'attribut `value`) et donc dans le fichier `.html` du dossier `KO__`. La
-« fuite du DOM brut » déjà identifiée (roadmap étape 7) est ici dotée d'un **mécanisme** :
+Angular/React fréquent sur l'attribut `value`) et donc dans le fichier `.html` du dossier `KO__`.
 
-- `type(By, Secret)` **enregistre** la valeur consommée dans un **registre `ThreadLocal`** des secrets du
-  test courant (purgé en fin de test, même hygiène que `RawDomCaptureListener`) ;
-- avant écriture du `.html`, `TestFailureManager` **remplace** chaque valeur du registre par son rendu
-  masqué (`masked()`) dans le DOM capté ;
-- le test « zéro clair » (étape 7) couvre les **trois artefacts, dump HTML inclus**, et la console.
+**Mécanisme implémenté (2026-07-12)** — remplace le **registre `ThreadLocal` des secrets consommés**
+initialement envisagé par la revue externe (écarté : sur-ingénierie pour un cas peu probable, rétention
+de valeurs claires en mémoire, couplage `sync → failure`) :
+
+- avant écriture du `.html`, `TestFailureManager#maskPasswordInputs` **masque la `value` de tous les
+  champs `<input type="password">`** du DOM capté (étoiles à hauteur de la longueur — révélation de
+  longueur déjà assumée par D12 ; guillemets/casse/ordre d'attributs tolérés, traitement best-effort
+  par expression régulière) ;
+- **aucune modification** de `type(By, Secret)` ni d'aucun autre composant ; **une seule méthode**,
+  couverte par `PasswordMaskingTest` (8 cas, « zéro clair » unitaire sur le dump) ;
+- **risque résiduel assumé** : un secret reflété **hors** d'un champ password (span, JSON inline,
+  état JS sérialisé) n'est pas couvert — cf. `points-attention.md` ;
+- la validation « zéro clair » **bout-en-bout** (3 artefacts + console, vrai navigateur) relève du
+  projet consommateur dédié (D20), au pilote.
 
 Aucun impact sur l'API publique ni sur le contrat de sortie (le `.html` reste un DOM rendable).
 
@@ -983,8 +1035,8 @@ coup), au lieu de tomber sur la première.
 
 - **Point clé** : dur vs soft est un comportement du **corps**, **pas de la signature** — `should…`
   reste `void` dans les deux cas. **Aucune nouvelle méthode publique**, **aucun impact sur le gel**.
-- Piloté par une **clé de config** **`qa.assertions.soft`** (*nom proposé, à confirmer*), **défaut
-  `false`** (mode dur).
+- Piloté par une **clé de config** **`qa.assertions.soft`** (nom **confirmé** — constante
+  `SoftAssertions.SOFT_KEY`), **défaut `false`** (mode dur).
 - En mode soft (`true`) : `should…` **n'lève pas** ; il **enregistre** l'échec (message + capture
   éventuelle) dans un collecteur **par test** (`ThreadLocal`) et **continue**. En **fin de test**,
   une **extension JUnit Jupiter** (`AfterTestExecutionCallback`) **vide le collecteur et fait échouer**
@@ -992,9 +1044,14 @@ coup), au lieu de tomber sur la première.
   le test **échoue** avec le **récapitulatif agrégé** de **toutes** les assertions KO (+ artefacts) —
   comportement **`assertAll`** (AssertJ/JUnit). **Pas** de mode « warning + vert » (on ne masque jamais une
   vérification cassée à la CI).
-- **Implémentation à l'étape 8.** Mécanisme **tranché en D22-bis** (extension `AfterTestExecutionCallback`
-  auto-détectée) ; contrainte : **zéro ligne** côté code de test (bascule par la seule clé) et **pas de
-  complexité** ajoutée à l'écriture du Framework.
+- **Infrastructure implémentée le 2026-07-12** (mécanisme tranché en D22-bis, extension
+  `AfterTestExecutionCallback` auto-détectée) : classes `SoftAssertions` (collecteur + `check()`) et
+  `SoftAssertionExtension` (`internal.assertion`), fichier
+  `META-INF/services/org.junit.jupiter.api.extension.Extension`, autodetection activée dans le Parent
+  POM — activation **prouvée empiriquement** (un soft-fail non drainé fait échouer le test via
+  l'extension). Contrainte tenue : **zéro ligne** côté code de test (bascule par la seule clé). Reste
+  le **branchement des `should…`** sur `SoftAssertions.check(...)`, porté par l'implémentation SYNC
+  (étape 8).
 
 ---
 
@@ -1044,8 +1101,9 @@ de D16 est **clos**.
 ### Impacts
 
 - **Aucune nouvelle signature publique, aucun impact sur le gel d'API** (mécanique d'étape 8).
-- Implémentation reportée à l'**étape 8** (2 petites classes `internal` + 1 fichier service + 1 paramètre
-  Surefire dans le Parent POM + branchement des `should…`).
+- Implémentation en deux temps : **infrastructure livrée le 2026-07-12** (2 petites classes
+  `internal.assertion` — `SoftAssertions` + `SoftAssertionExtension` — + 1 fichier service + 1 paramètre
+  Surefire dans le Parent POM) ; le **branchement des `should…`** suit avec l'implémentation SYNC.
 
 ### Mise à jour (revue externe 2026-07-07) — validation empirique ≠ contrat (C11)
 

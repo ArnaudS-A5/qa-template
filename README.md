@@ -4,9 +4,12 @@ Socle d'outils QA custom pour la stack **Selenium Java / Serenity BDD / JUnit 5 
 consommé **comme dépendance Maven** par les ~17 projets de tests de l'équipe
 (Git/Bitbucket, Artifactory JFrog, CI Jenkins gérée par une autre équipe).
 
-> **Statut : API gelée (2026-06-24), implémentation en cours (étape 8).** Les signatures publiques sont
-> figées ; le **masquage `Secret`** et la **capture d'échec** (`TestFailureManager` + capture du DOM brut)
-> sont implémentés et testés. Les autres composants restent des coquilles typées.
+> **Statut : API gelée (2026-06-24), implémentation en cours (étape 8).** Sont implémentés et testés : le
+> **masquage `Secret`** + DOM, la **capture d'échec** (`TestFailureManager` + DOM brut), l'**infra
+> soft-assert** (D22-bis) et tout le **domaine SYNC web** (moteur `fluentWait`, 78 méthodes, profils
+> `SyncTimeout`, diagnostic actif, `within`, `should…`/soft-assert — noms alignés sur Serenity). Restent :
+> `DataFileManager`, `LogbackConfigurator`, `CyberArkApiClient`, reporting AUTO, et le lot SYNC 2c (flag JS,
+> neutralisation C8, `pageLoadTimeout`, tests navigateur au projet `qa-test`). Gestes mobiles différés.
 
 ## Sommaire
 
@@ -77,10 +80,11 @@ délégation à l'opération native Selenium/Serenity quand l'élément est rée
 
 | Domaine | `api` (public) | `internal` (caché) | Rôle |
 |---|---|---|---|
-| `sync` | `WebSync`, `MobileSync` | `AbstractSyncManager` | synchronisation robuste (fluentWait + flag JS) |
+| `sync` | `WebSync`, `MobileSync`, `SwipeDirection`, `SyncTimeout` | `AbstractSyncManager`, `SyncCondition` | synchronisation robuste (`fluentWait`, profils de timeout, diagnostic actif) — **web implémenté** |
 | `data` | `DataFileManager` | `AbstractDataFileManager`, `ExcelFileReaderWriter`, `CsvFileReaderWriter` | données de test Excel/CSV (lecture + écriture) |
 | `log` | *(aucun type public — log d'action via SLF4J natif)* | `LogbackConfigurator` *(coquille existante ; resources à venir — D16-bis)* | default Logback (namespace `"qa"`, clé `qa.logger.level`) imposé par la présence du jar, surchargeable ; **pas de façade maison** |
-| `failure` | *(aucun type public — activation native par présence du jar)* | `TestFailureManager`, `RawDomCaptureListener` | artefacts d'échec (`ERROR.log`/`FAIL.log` + dump du **DOM brut**) — **implémenté** |
+| `failure` | *(aucun type public — activation native par présence du jar)* | `TestFailureManager`, `RawDomCaptureListener` | artefacts d'échec (`ERROR.log`/`FAIL.log` + dump du **DOM brut**, champs password masqués) — **implémenté** |
+| `assertion` | *(aucun type public — extension Jupiter auto-détectée, D22-bis)* | `SoftAssertions`, `SoftAssertionExtension` | soft-assert (clé `qa.assertions.soft`) : collecte les échecs en mode soft, échec agrégé en fin de test — **infrastructure implémentée** |
 | `secret` | `SecretManager`, `SecretManagers`, `Secret` | `CyberArkApiClient` | récupération de secrets au runtime (`CyberArkApiClient` — coquille) + valeur sensible `Secret` **au masquage implémenté** (D12) |
 | `reporting` | *(aucun type public — reporting AUTO, D13)* | `ReportingManager`, `AlmApiClient`, `TestExecutionReport`, `ExecutionStatus` | remontée des résultats vers ALM (D13) |
 | `exception` | `QaToolkitException` + `SyncException` / `DataFileException` / `SecretException` / `ReportingException` | — | hiérarchie d'erreurs **unchecked** (D18) ; traduit les exceptions tierces en conservant la `cause` |
@@ -119,7 +123,8 @@ KO__{ENV}__{NomDuTest}__{yyyy-MM-dd_HH-mm-ss}/
 ## Documentation
 
 - [Spécifications fonctionnelles détaillées (SFD)](qa-socle/docs/sfd.md) — contrat fonctionnel (besoins `BF-*`)
-- [Décisions d'architecture actées](qa-socle/docs/decisions.md) (D1–D22, amendées par D6-bis et D16-bis)
+- [Décisions d'architecture actées](qa-socle/docs/decisions.md) (D1–D22, amendées par D6-bis, D16-bis et D22-bis)
+- [Points d'attention](qa-socle/docs/points-attention.md) — risques et vigilances non couverts par les décisions
 - [Feuille de route de construction](qa-socle/docs/roadmap.md) (10 étapes)
 - [Gouvernance Git flow](qa-socle/docs/git-flow.md) (`master` + `develop` + branches de travail)
 - [Exemple de configuration consommateur](qa-socle/docs/serenity.conf.example) — registre des clés `qa.*` (défauts inclus)

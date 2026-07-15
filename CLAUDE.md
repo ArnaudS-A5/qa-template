@@ -45,22 +45,24 @@ Toute la base de code est sous `com.example.qa` et se divise en deux sous-arbres
 
 | Domaine | Accès public (`api`) | Interne (`internal`) | Activation |
 |---|---|---|---|
-| `sync` | `WebSync`, `MobileSync`, `SwipeDirection` | `AbstractSyncManager` | Instance créée par le consommateur |
+| `sync` | `WebSync`, `MobileSync`, `SwipeDirection`, `SyncTimeout` | `AbstractSyncManager`, `SyncCondition` | Instance créée par le consommateur (`new WebSync()` = profil MEDIUM) |
 | `data` | `DataFileManager` (interface), `DataFiles` (factory) | `AbstractDataFileManager`, `ExcelFileReaderWriter`, `CsvFileReaderWriter` | Via factory |
 | `secret` | `SecretManager` (interface), `SecretManagers` (factory), `Secret` | `CyberArkApiClient` | Via factory |
 | `failure` | *(aucun)* | `TestFailureManager`, `RawDomCaptureListener` | **Auto** — ServiceLoader (présence du jar) |
+| `assertion` | *(aucun)* | `SoftAssertions`, `SoftAssertionExtension` | **Auto** — ServiceLoader Jupiter + autodetection (Parent POM) |
 | `reporting` | *(aucun)* | `ReportingManager`, `AlmApiClient`, `TestExecutionReport`, `ExecutionStatus` | **Auto** — ServiceLoader |
 | `log` | *(aucun)* | `LogbackConfigurator` | **Auto** — ServiceLoader Logback |
 | `exception` | `QaToolkitException` + 4 sous-types domaine | — | Levées par le socle |
 
 ### Activation native (ServiceLoader)
 
-Deux services sont auto-découverts par la simple présence du jar `qa-socle` — aucune annotation côté consommateur :
+Trois services sont auto-découverts par la simple présence du jar `qa-socle` — aucune annotation côté consommateur :
 
 1. `META-INF/services/org.junit.platform.launcher.TestExecutionListener` → `TestFailureManager` (écrit les artefacts `KO__` à l'échec)
 2. `META-INF/services/net.thucydides.model.steps.StepListener` → `RawDomCaptureListener` (capture `driver.getPageSource()` au moment du `stepFailed`, mémorisé en `ThreadLocal`)
+3. `META-INF/services/org.junit.jupiter.api.extension.Extension` → `SoftAssertionExtension` (draine le collecteur soft-assert en fin de test et fait échouer si nécessaire — D22-bis). Nécessite `junit.jupiter.extensions.autodetection.enabled=true`, posé dans la config Surefire du Parent POM (hérité).
 
-`TestFailureManager` consomme le DOM capté via `consumeCapturedDom()` dans `executionFinished` (même thread → thread-safe, validé en parallèle).
+`TestFailureManager` consomme le DOM capté via `consumeCapturedDom()` dans `executionFinished` (même thread → thread-safe, validé en parallèle), et masque la `value` des `<input type="password">` avant écriture du `.html` (`maskPasswordInputs`).
 
 ### Contrat de sortie (artefacts d'échec)
 
@@ -90,12 +92,23 @@ Branches : `master` (stable, taguée aux releases) → `develop` (intégration) 
 
 Convention de commit : `<type>(<zone>): <résumé impératif court>` avec types `feat|fix|test|refactor|chore|docs|ci`.
 
-## Statut du projet (2026-07-01)
+## Statut du projet (2026-07-13)
 
 - **Étapes 1–6 terminées** : structure, versioning, exceptions, config, stratégie de test, signatures gelées (gel API 2026-06-24).
-- **Étape 7 en cours** : masquage `Secret` implémenté et testé ; reste l'audit « zéro clair » dans les artefacts et la fuite du DOM brut.
-- **Étape 8 en cours** : `TestFailureManager` + `RawDomCaptureListener` implémentés et testés ; restent `WebSync`, `DataFileManager`, soft-assert, `LogbackConfigurator`, ArchUnit, `CyberArkApiClient`, reporting AUTO.
+- **Étape 7 en cours** : masquage `Secret` + masquage du DOM (`maskPasswordInputs`, champs `type=password`) implémentés et testés unitairement ; reste la validation « zéro clair » bout-en-bout au pilote (D20).
+- **Étape 8 en cours** :
+  - **FAILURE** (`TestFailureManager` + `RawDomCaptureListener`) et **infra soft-assert** (`SoftAssertions`/`SoftAssertionExtension`, D22-bis) — faits + testés.
+  - **SYNC web** (2026-07-13, cf. D3 maj) — **fait** : moteur `fluentWait(By,Function)`/`poll` (testé), profils `SyncTimeout`, diagnostic actif `SyncCondition`, 78 méthodes, `within` (deux-temps), `type(By,Secret)`, `should…` via `tryAssert` (testé), noms alignés strictement sur Serenity. **Reste (lot 2c)** : flag JS, neutralisation C8 (`serenity.conf`), `pageLoadTimeout`, tests comportementaux au projet `qa-test`. Gestes `MobileSync` différés (mobile hors périmètre).
+  - **Restent** : `DataFileManager`, `LogbackConfigurator`, ArchUnit, `CyberArkApiClient`, reporting AUTO.
 - **Étapes 9–10** : à faire (pilote, japicmp, release 1.0.0).
+- **Points de vigilance non couverts par les décisions** : voir `qa-socle/docs/points-attention.md`.
+
+### Domaine SYNC — repères d'implémentation
+
+- **Profils de timeout** : `new WebSync(SyncTimeout.LONG)` — jamais de durée en dur dans les PageObjects ; valeurs pilotées par `qa.sync.timeout.<profil>`. Deux étages d'attente : page (`readyState`, `qa.sync.pageLoadTimeout`) vs objet (`fluentWait`).
+- **Prédicats** (`is…`/`contains…`) = état courant, **ne lèvent jamais** (absent → `false`). **`should…`** = assertion **avec attente** branchée sur le soft-assert (`tryAssert`).
+- **`within`** = vue bornée immuable, résolution **deux-temps** (no-leak, localise container vs child).
+- **Nommage** : le socle reprend **exactement** le nom Serenity/Selenium appelé (wrapper de synchro).
 
 Le base package `com.example.qa` et le `groupId` sont des placeholders volontaires à remplacer à l'adoption (refactor IDE « Rename package » + 2 `<groupId>` dans les POM).
 
@@ -106,3 +119,4 @@ Le base package `com.example.qa` et le `groupId` sont des placeholders volontair
 - `qa-socle/docs/sfd.md` — contrat fonctionnel (`BF-*`)
 - `qa-socle/docs/git-flow.md` — gouvernance Git de l'équipe
 - `qa-socle/docs/serenity.conf.example` — registre de toutes les clés `qa.*` avec défauts
+- `qa-socle/docs/points-attention.md` — points de vigilance (PA-*) non couverts par les décisions

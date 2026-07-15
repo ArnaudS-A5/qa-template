@@ -4,8 +4,9 @@ Suivi de la séquence de construction du squelette du socle (dépendance Maven c
 
 **Fil conducteur** : figer les règles du contrat (1→5) → écrire le contrat (6→7) → le remplir et le
 tester (8) → le valider sur un pilote (9) → le protéger et le livrer (10). L'implémentation a **démarré** :
-le **masquage du type `Secret`** (étape 7) et la **capture d'échec** (`TestFailureManager` + capture du DOM
-brut, composant FAILURE de l'étape 8) sont **implémentés et testés** ; les autres composants restent des
+le **masquage du type `Secret`** et le **masquage du DOM brut** (étape 7), la **capture d'échec**
+(`TestFailureManager` + capture du DOM brut) et l'**infrastructure soft-assert** (D22-bis, composants
+FAILURE de l'étape 8) sont **implémentés et testés** ; les autres composants restent des
 **coquilles typées**.
 
 ## Légende des statuts
@@ -27,8 +28,8 @@ brut, composant FAILURE de l'étape 8) sont **implémentés et testés** ; les a
 | 4 | Configuration & portée/thread-safety des composants | — (avant 6) | ✅ Fait (D19) |
 | 5 | Stratégie de test du socle | — (avant 8) | ✅ Fait (D20) |
 | 6 | Signatures d'API par composant (coquilles typées) + gel de l'API | 1→5 | ✅ Fait (toutes coquilles signées ; D22 assertions ; **gel API 2026-06-24**) |
-| 7 | Cas sécurité : masquage des secrets | 6 | 🟡 En cours (masquage `Secret` **implémenté + testé** ; reste l'intégration/audit dans `TestFailureManager` + test « zéro clair ») |
-| 8 | Implémentation, composant par composant (+ tests) | 5→7 | 🟡 En cours (FAILURE **fait + testé** : artefacts `KO__` + capture DOM brut ; reste sync/data/reporting/secret/log/soft-assert/ArchUnit) |
+| 7 | Cas sécurité : masquage des secrets | 6 | 🟡 En cours (masquage `Secret` + masquage DOM (`type=password`) **implémentés + testés unitairement** ; reste la validation « zéro clair » bout-en-bout au pilote) |
+| 8 | Implémentation, composant par composant (+ tests) | 5→7 | 🟡 En cours (FAILURE **fait + testé** : artefacts `KO__` + capture DOM brut + **infra soft-assert** ; reste sync/data/reporting/secret/log/ArchUnit) |
 | 9 | Validation pilote sur SNAPSHOT/RC + ajustements | 8 | ⬜ À faire |
 | 10 | Garde-fou compat (japicmp/revapi) + version 1.0.0 + doc + généralisation | 9 | ⬜ À faire |
 
@@ -212,24 +213,26 @@ son **intégration interne** et ses **tests**. Isolé car risque OWASP. ⚠️ *
 publique ici** : la seule signature concernée (contrat « valeur sensible » du type `Secret`) est
 figée en **étape 6, avant le gel**.
 
-**Statut : 🟡 En cours** — la politique et les signatures sont cadrées ; le **masquage du type `Secret`
-est implémenté et testé** (étape 7). `TestFailureManager` est désormais implémenté (étape 8) et s'appuie
+**Statut : 🟡 En cours** — la politique et les signatures sont cadrées ; le **masquage du type `Secret`**
+et le **masquage du DOM brut** sont **implémentés et testés unitairement**. `TestFailureManager` s'appuie
 sur le masquage **à la source** (`Secret#toString()` : les descriptions de steps remontées par Serenity
-sont déjà masquées). Restent le **test « zéro clair »** sur les artefacts `KO__` et le traitement de la
-**fuite du DOM brut** — la capture option A (cf. D16) écrit du texte de page arbitraire, **non couvert par
-`Secret`**.
+sont déjà masquées) et masque les champs password du DOM capté avant écriture. Reste la **validation
+« zéro clair » bout-en-bout** (3 artefacts + log live, vrai navigateur) — projet consommateur dédié
+(D20), au pilote.
 
 - [x] Définir la **règle de masquage** : quoi masquer, comment (**format acté D12** : 2 premiers
       caractères + masque + 16 hexa SHA-256), à quel moment (en amont de toute écriture) — `Secret` / D12 / D16-bis.
 - [x] Implémenter le **masquage à la source** dans le type `Secret` (`masked()` / `sha256Prefix()` /
       `toString()`) — **sans changer sa signature publique** (figée en 6). **Fait** : format D12 +
       `SecretMaskingTest` (vecteur SHA-256 déterministe), build vert.
-- [ ] Garantir le masquage dans `TestFailureManager` (`internal`) : le contenu écrit s'appuie sur le rendu
-      masqué à la source ; **traiter la fuite du DOM brut** (option A) qui échappe à `Secret` —
-      mécanisme acté (revue externe 2026-07-07, cf. D16) : `type(By, Secret)` alimente un **registre
-      `ThreadLocal`** des secrets consommés ; `TestFailureManager` **remplace** ces valeurs par leur rendu
-      `masked()` dans le DOM capté **avant** écriture du `.html` (purge en fin de test).
-- [ ] **Tests** : aucun secret en clair dans les 3 artefacts `KO__` (**dump HTML inclus**) ni dans le log live.
+- [x] Garantir le masquage dans `TestFailureManager` (`internal`) : le contenu écrit s'appuie sur le rendu
+      masqué à la source ; **fuite du DOM brut traitée** (2026-07-12, cf. D16 amendé) :
+      `maskPasswordInputs` masque la `value` des `<input type="password">` du DOM capté **avant**
+      écriture du `.html` (étoiles, best-effort). Le registre `ThreadLocal` envisagé par la revue externe
+      a été **écarté** (sur-ingénierie ; cf. D16). Couvert par `PasswordMaskingTest` (8 cas).
+      Risque résiduel (secret reflété hors champ password) tracé dans `points-attention.md`.
+- [ ] **Validation bout-en-bout** : aucun secret en clair dans les 3 artefacts `KO__` (**dump HTML
+      inclus**) ni dans le log live, sur vrai navigateur — projet consommateur dédié (D20), au pilote.
 
 ---
 
@@ -239,24 +242,33 @@ sont déjà masquées). Restent le **test « zéro clair »** sur les artefacts 
 (selon la stratégie de l'étape 5) qui remplacent les tests de hiérarchie triviaux actuels.
 
 **Statut : 🟡 En cours** — *première étape AVEC implémentation, **démarrée*** : le composant **FAILURE**
-(`TestFailureManager` + capture du DOM brut `RawDomCaptureListener`) est implémenté et testé. Restent
-`WebSync`, `DataFileManager`, le soft-assert, `LogbackConfigurator`, les garde-fous ArchUnit,
-`CyberArkApiClient` et le reporting AUTO.
+(`TestFailureManager` + capture du DOM brut `RawDomCaptureListener`) et l'**infrastructure soft-assert**
+(D22-bis) sont implémentés et testés. Restent `WebSync` (dont le branchement des `should…` sur le
+soft-assert), `DataFileManager`, `LogbackConfigurator`, les garde-fous ArchUnit, `CyberArkApiClient`
+et le reporting AUTO.
 
-- [ ] `WebSync` (cœur : fluentWait + flag JS) + tests comportementaux. **Deux exigences** (revue externe
-      2026-07-07, cf. D3/C8) : (1) **une seule horloge** — neutraliser les waits de la couche déléguée
-      (retries `WebElementFacade`, implicit waits Serenity à 0 via `serenity.conf.example`) pour éviter le
-      timeout multiplicatif ; (2) **tracker la dernière exception ignorée** dans la boucle et la joindre en
-      `cause` de la `SyncException` (support des messages différenciés C4).
+- [x] **SYNC web** (2026-07-13, cf. D3 maj) : moteur `fluentWait(By, Function)` + `poll` pur (testé),
+      profils `SyncTimeout` (`SHORT/MEDIUM/LONG/EXTRA_LONG`, clés `qa.sync.timeout.*`), **diagnostic actif**
+      (`SyncCondition`, dernière exception en `cause` + latentes en `suppressed`, C4 porté par le message
+      multi-codes), **toute la surface** (78 méthodes) + `within` (deux-temps, no-leak), `type(By, Secret)`,
+      les **`should…` branchés sur le soft-assert** via `tryAssert` (testé). Noms alignés strictement sur
+      Serenity (6 renommages). *Une seule horloge (C8)* : facade délégué à timeout 0.
+  - [ ] **Reste SYNC (lot 2c)** : injection du **flag JS** de re-render ; neutralisation C8 dans
+        `serenity.conf.example` (implicit wait 0…) ; application du `pageLoadTimeout` ; **tests
+        comportementaux au projet `qa-test`** (site bidon, navigateur réel) — la surface web n'est pas
+        testable unitairement dans le socle. *Gestes `MobileSync` : différés (mobile hors périmètre).*
 - [ ] `DataFileManager` (Excel/CSV) + tests.
 - [x] `TestFailureManager` (depuis le `TestOutcome` Serenity) + tests — **fait** : artefacts `KO__`
       (`ERROR.log`/`FAIL.log`/dump HTML), feuille KO, `sanitize` (accents translittérés), **capture du DOM
       brut à l'échec** via `RawDomCaptureListener` (option A, cf. D16) avec repli sur la source Serenity ;
       couvert par `TestFailureArtefactsTest`.
-- [ ] **Soft-assert (D22-bis)** : extension Jupiter `AfterTestExecutionCallback` (`internal`) + collecteur
-      `ThreadLocal` ; `should…` empilent en mode soft ; auto-détection activée dans le Parent POM
-      (`junit.jupiter.extensions.autodetection.enabled=true`). Le listener `TestFailureManager` n'écrit que
-      les artefacts (il ne fait pas échouer).
+- [x] **Soft-assert (D22-bis) — infrastructure** : extension Jupiter `AfterTestExecutionCallback`
+      (`SoftAssertionExtension`) + collecteur `ThreadLocal` (`SoftAssertions`, package
+      `internal.assertion`) ; fichier services `org.junit.jupiter.api.extension.Extension` ;
+      auto-détection activée dans le Parent POM (`junit.jupiter.extensions.autodetection.enabled=true`).
+      **Fait + testé (2026-07-12)**, activation prouvée empiriquement. Le listener `TestFailureManager`
+      n'écrit que les artefacts (il ne fait pas échouer). *Le branchement des `should…` en mode soft est
+      porté par l'item `WebSync` ci-dessus.*
 - [ ] `LogbackConfigurator` (`internal.log`) implémente `Configurator` + **passer `logback-classic` en
       scope `compile`** (cf. D16-bis) + resources `logback-socle.xml` /
       `META-INF/services/ch.qos.logback.classic.spi.Configurator` (default socle) + test :

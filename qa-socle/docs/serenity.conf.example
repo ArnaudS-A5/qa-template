@@ -36,6 +36,22 @@ qa.failure.artefacts.dumpHtml  = true              # dump HTML de la step en err
 # Surchargeable plus finement par un logback.xml local (prioritaire).
 qa.logger.level = WARN   # TRACE | DEBUG | INFO | WARN | ERROR
 
+# --- Synchronisation : profils de timeout (domaine SYNC, D3) -----------------
+# Le WebSync/MobileSync choisit un profil à la construction (new WebSync(SyncTimeout.LONG)).
+# Ces clés pilotent la VALEUR de chaque profil, sans jamais mettre de durée en dur dans les PageObjects.
+qa.sync.timeout.short     =   5s   # éléments rapides
+qa.sync.timeout.medium    =  15s   # défaut de new WebSync()
+qa.sync.timeout.long      =  60s   # zones lentes (gros modules)
+qa.sync.timeout.extraLong = 120s   # modules très lourds (ex. signature)
+qa.sync.pollingInterval   = 250ms  # pas de polling du fluentWait
+qa.sync.pageLoadTimeout   = 120s   # plafond de chargement de page (readyState) — posé AUTO au 1er contact driver
+
+# Neutralisation C8 : le fluentWait du socle = horloge PRINCIPALE. L'implicit wait natif est un filet pour
+# les appels Selenium BRUTS (hors WebSync) ; le socle le neutralise DYNAMIQUEMENT à 0 pendant son propre
+# polling (fluentWait/should), puis le restaure → les deux attentes ne s'additionnent jamais.
+serenity.driver.page.load.strategy = normal   # attendre readyState=complete (défaut Serenity)
+webdriver.timeouts.implicitlywait  = 3000      # 3 s : filet des appels bruts ; sans effet sous le fluentWait (toggle)
+
 # --- Assertions (domaine SYNC, D22) ------------------------------------------
 # false = mode dur (échoue à la 1re assertion). true = soft assert : agrège toutes
 # les assertions KO du test puis échoue en fin de test (style assertAll).
