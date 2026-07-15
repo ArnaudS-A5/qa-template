@@ -1,15 +1,37 @@
 package com.example.qa.internal.sync;
 
 import java.time.Duration;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import net.serenitybdd.core.pages.WebElementFacade;
+import net.serenitybdd.core.pages.WebElementFacadeImpl;
+import net.serenitybdd.model.environment.EnvironmentSpecificConfiguration;
+import net.thucydides.core.webdriver.ThucydidesWebDriverSupport;
+import net.thucydides.model.environment.SystemEnvironmentVariables;
+import net.thucydides.model.util.EnvironmentVariables;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
+import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.Point;
 import org.openqa.selenium.Rectangle;
+import org.openqa.selenium.SearchContext;
+import org.openqa.selenium.StaleElementReferenceException;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
 import com.example.qa.api.exception.SyncException;
 import com.example.qa.api.secret.Secret;
+import com.example.qa.api.sync.SyncTimeout;
+import com.example.qa.internal.assertion.SoftAssertions;
 
 /**
  * Moteur de synchronisation <b>et</b> socle d'interactions commun aux deux façades
@@ -33,23 +55,404 @@ import com.example.qa.api.secret.Secret;
  */
 public abstract class AbstractSyncManager {
 
+	/** Profil de timeout de cette instance (état propre ; le driver reste celui du thread). */
+	private final SyncTimeout timeout;
+
+	/**
+	 * Contexte de recherche imbriquée ({@code within}) : {@code null} à la racine. Une vue résout ses
+	 * {@code By} comme <b>descendants</b> de {@link #containerLocator}, lui-même résolu dans le contexte
+	 * du {@link #parent} (récursif pour {@code within().within()}). Immuable → sûr en parallèle (D19).
+	 */
+	private final AbstractSyncManager parent;
+	private final By containerLocator;
+
+	/**
+	 * Marqueur d'instance (thread-confiné, <b>non {@code static}</b>) : le plafond de chargement de page
+	 * n'est posé qu'<b>une seule fois</b> sur le driver, au 1ᵉʳ contact de cette instance. Cf. {@link #driver()}.
+	 */
+	private boolean pageLoadTimeoutApplied;
+
+	/** Construit un moteur racine adossé au profil de timeout donné (jamais {@code null}). */
+	protected AbstractSyncManager(SyncTimeout timeout) {
+		this.timeout = timeout;
+		this.parent = null;
+		this.containerLocator = null;
+	}
+
+	/** Construit une <b>vue bornée</b> {@code within} : hérite le profil du parent, borne à {@code container}. */
+	protected AbstractSyncManager(AbstractSyncManager parent, By container) {
+		this.timeout = parent.timeout;
+		this.parent = parent;
+		this.containerLocator = container;
+	}
+
 	// ============================================================================================
 	// Moteur d'attente commun (D3) — protégé, utilisé par les actions ; jamais réimplémenté
 	// ============================================================================================
 
 	/**
-	 * Attente robuste commune : applique la condition jusqu'au {@code timeout} en absorbant les
-	 * exceptions transitoires de re-render (cf. D3). Au timeout, traduit l'échec en {@link SyncException}
-	 * porteuse d'un message différencié (élément absent vs jamais interactable).
+	 * Attente robuste commune (D3) : ré-résout {@code locator} et applique {@code action} en boucle
+	 * jusqu'à succès ou timeout (celui du <b>profil de l'instance</b>), en absorbant les exceptions
+	 * transitoires de re-render. Au timeout, lève une {@link SyncException} avec le diagnostic actif.
+	 * La résolution est <b>paresseuse</b> (no-leak, D3) : aucune méthode ne conserve de handle vivant.
 	 *
-	 * @param timeout   délai maximal d'attente
-	 * @param condition condition à satisfaire (résultat attendu)
-	 * @param <T>       type du résultat produit par la condition
-	 * @return le résultat de la condition une fois satisfaite
-	 * @throws SyncException si la condition n'est pas satisfaite avant le timeout
+	 * @param locator cible à ré-résoudre à chaque tour
+	 * @param action  opération à appliquer sur l'élément résolu (renvoie la valeur attendue)
+	 * @param <T>     type du résultat produit par l'action
+	 * @return le résultat de l'action une fois l'élément exploitable
+	 * @throws SyncException si l'action ne réussit pas avant le timeout du profil
 	 */
-	protected <T> T fluentWait(Duration timeout, Supplier<T> condition) {
-		return null;
+	protected <T> T fluentWait(By locator, Function<WebElementFacade, T> action) {
+		return withoutImplicitWait(() -> poll(locator, resolveTimeout(), resolvePolling(),
+				() -> action.apply(resolve(locator)),
+				() -> diagnose(locator)));
+	}
+
+	// ============================================================================================
+	// Moteur de polling « pur » (sans navigateur) — cœur réutilisé par fluentWait (câblage étape 8)
+	// ============================================================================================
+
+	/** Intervalle de polling par défaut du moteur (D3). Surchargé par {@code qa.sync.pollingInterval}. */
+	static final Duration POLLING_INTERVAL_DEFAULT = Duration.ofMillis(250);
+
+	/**
+	 * Boucle de synchronisation « pure » : répète {@code action} jusqu'à succès ou {@code timeout}, en
+	 * <b>absorbant</b> les seules exceptions transitoires de synchro (celles reconnues par
+	 * {@link SyncCondition#classify}). Toute autre exception (bug, sélecteur invalide…) est <b>remontée
+	 * telle quelle</b> immédiatement. Au timeout, lève une {@link SyncException} construite par
+	 * {@link #buildSyncException} : {@code cause} = <b>dernière</b> exception transitoire réellement
+	 * ignorée, message + {@code suppressed} = <b>diagnostic actif</b> ({@code diagnosis}, évalué une
+	 * seule fois à cet instant).
+	 *
+	 * <p>Testable sans navigateur : {@code action} et {@code diagnosis} sont fournis par l'appelant
+	 * ({@code fluentWait} en production, des lambdas simulées en test).
+	 */
+	static <T> T poll(By locator, Duration timeout, Duration pollingInterval,
+			Supplier<T> action, Supplier<Set<SyncCondition>> diagnosis) {
+		long deadlineNanos = System.nanoTime() + timeout.toNanos();
+		Throwable lastIgnored = null;
+		while (true) {
+			try {
+				return action.get();
+			} catch (RuntimeException failure) {
+				if (SyncCondition.classify(failure).isEmpty()) {
+					throw failure; // non transitoire : ce n'est pas un problème de synchro
+				}
+				lastIgnored = failure; // on écrase à chaque tour → la DERNIÈRE ignorée survivra
+			}
+			if (System.nanoTime() >= deadlineNanos) {
+				throw buildSyncException(locator, timeout, lastIgnored, diagnosis.get());
+			}
+			sleepQuietly(pollingInterval);
+		}
+	}
+
+	/**
+	 * Construit la {@link SyncException} d'un timeout : message avec les <b>codes stables</b> des
+	 * conditions latentes (contrat {@code qa-maintenance}, D9) + libellés lisibles, {@code cause} =
+	 * dernière exception réellement ignorée, et chaque condition latente <b>matérialisée en
+	 * {@code suppressed}</b> (objets Selenium typés, pour le débogage). Diagnostic vide → message
+	 * générique « instable ».
+	 */
+	static SyncException buildSyncException(By locator, Duration timeout, Throwable cause,
+			Set<SyncCondition> latentConditions) {
+		StringBuilder message = new StringBuilder("Synchronisation impossible sur ")
+				.append(locator).append(" après ").append(humanize(timeout));
+		if (latentConditions.isEmpty()) {
+			message.append(" — cause indéterminée (application instable ?)");
+		} else {
+			latentConditions.forEach(condition -> message.append(" [").append(condition.code()).append(']'));
+			message.append(" : ").append(latentConditions.stream()
+					.map(SyncCondition::label).collect(Collectors.joining(" ; ")));
+		}
+		SyncException exception = new SyncException(message.toString(), cause);
+		latentConditions.forEach(condition ->
+				exception.addSuppressed(condition.toException(condition.label() + " sur " + locator)));
+		return exception;
+	}
+
+	private static String humanize(Duration timeout) {
+		long millis = timeout.toMillis();
+		return millis >= 1000 ? (millis / 1000) + " s" : millis + " ms";
+	}
+
+	private static void sleepQuietly(Duration pollingInterval) {
+		try {
+			Thread.sleep(Math.max(0L, pollingInterval.toMillis()));
+		} catch (InterruptedException interrupted) {
+			Thread.currentThread().interrupt();
+			throw new SyncException("Attente de synchronisation interrompue", interrupted);
+		}
+	}
+
+	// ============================================================================================
+	// Câblage navigateur (lot 2a) : timeout du profil, résolution paresseuse, diagnostic actif
+	// ============================================================================================
+
+	/** Clé du pas de polling ; défaut {@link #POLLING_INTERVAL_DEFAULT}. */
+	static final String POLLING_INTERVAL_KEY = "qa.sync.pollingInterval";
+
+	/** Timeout effectif = clé {@code qa.sync.timeout.<profil>} si définie, sinon le défaut du profil. */
+	Duration resolveTimeout() {
+		return config(timeout.key()).map(AbstractSyncManager::parseDuration).orElse(timeout.defaultValue());
+	}
+
+	static Duration resolvePolling() {
+		return config(POLLING_INTERVAL_KEY).map(AbstractSyncManager::parseDuration).orElse(POLLING_INTERVAL_DEFAULT);
+	}
+
+	/** Interprète une durée de config : {@code "15s"}, {@code "500ms"}, ou un nombre nu (secondes). */
+	static Duration parseDuration(String raw) {
+		String value = raw.trim();
+		if (value.endsWith("ms")) {
+			return Duration.ofMillis(Long.parseLong(value.substring(0, value.length() - 2).trim()));
+		}
+		if (value.endsWith("s")) {
+			return Duration.ofSeconds(Long.parseLong(value.substring(0, value.length() - 1).trim()));
+		}
+		return Duration.ofSeconds(Long.parseLong(value));
+	}
+
+	private static Optional<String> config(String key) {
+		EnvironmentVariables env = SystemEnvironmentVariables.createEnvironmentVariables();
+		return EnvironmentSpecificConfiguration.from(env).getOptionalProperty(key);
+	}
+
+	// ============================================================================================
+	// Plafond de chargement de page — appliqué AUTOMATIQUEMENT au 1ᵉʳ contact driver (lot 2c)
+	// ============================================================================================
+
+	/** Clé du plafond de chargement de page ; défaut {@link #PAGE_LOAD_TIMEOUT_DEFAULT}. */
+	static final String PAGE_LOAD_TIMEOUT_KEY = "qa.sync.pageLoadTimeout";
+
+	/** Plafond de chargement de page par défaut (2 min) : évite qu'une page qui « pend » bloque sans fin. */
+	static final Duration PAGE_LOAD_TIMEOUT_DEFAULT = Duration.ofMinutes(2);
+
+	/** Plafond effectif = clé {@code qa.sync.pageLoadTimeout} si définie, sinon 2 min. */
+	Duration resolvePageLoadTimeout() {
+		return config(PAGE_LOAD_TIMEOUT_KEY).map(AbstractSyncManager::parseDuration).orElse(PAGE_LOAD_TIMEOUT_DEFAULT);
+	}
+
+	/**
+	 * Driver Serenity du thread courant. Au <b>1ᵉʳ contact</b> de cette instance, pose <b>une seule fois</b>
+	 * le plafond {@link #resolvePageLoadTimeout()} sur le driver — <b>automatique</b>, sans aucun geste
+	 * consommateur ni type public ajouté (option A du lot 2c). Idempotent par instance (marqueur
+	 * {@link #pageLoadTimeoutApplied} <b>non {@code static}</b>, donc thread-safe) ; le réglage Selenium
+	 * étant <b>dynamique</b> (il vaut pour les navigations suivantes), l'appliquer au 1ᵉʳ accès du socle
+	 * suffit. Best-effort : un driver/contexte qui refuse le réglage ne fait pas échouer le test.
+	 */
+	private WebDriver driver() {
+		WebDriver driver = ThucydidesWebDriverSupport.getDriver();
+		if (!pageLoadTimeoutApplied) {
+			pageLoadTimeoutApplied = true; // posé d'abord : un refus ne doit pas re-tenter à chaque résolution
+			try {
+				driver.manage().timeouts().pageLoadTimeout(resolvePageLoadTimeout());
+			} catch (RuntimeException refused) {
+				// certains drivers/contextes refusent ce réglage → best-effort, on n'échoue pas pour ça
+			}
+		}
+		return driver;
+	}
+
+	/**
+	 * Exécute {@code operation} avec l'<b>implicit wait natif</b> Serenity/Selenium <b>neutralisé à 0</b>,
+	 * puis le <b>restaure</b> (try/finally). Objectif (C8, lot 2c) : garder <b>deux attentes distinctes</b> —
+	 * le polling du socle ({@link #fluentWait}, {@link #tryAssert}) reste <b>fin</b> (250 ms) et ne
+	 * s'additionne <b>jamais</b> à l'implicit wait (3 s), lequel n'est là que comme <b>filet pour les appels
+	 * Selenium bruts</b> du consommateur (hors {@code WebSync}). Le driver est confiné au thread → sûr en
+	 * parallèle. Best-effort : si le driver ne donne pas accès aux {@code timeouts}, on exécute sans toggle.
+	 */
+	private <T> T withoutImplicitWait(Supplier<T> operation) {
+		WebDriver driver;
+		Duration previous;
+		try {
+			driver = driver();
+			previous = driver.manage().timeouts().getImplicitWaitTimeout();
+			driver.manage().timeouts().implicitlyWait(Duration.ZERO);
+		} catch (RuntimeException noToggle) {
+			return operation.get(); // pas de driver / timeouts inaccessibles → exécution sans toggle
+		}
+		try {
+			return operation.get();
+		} finally {
+			try {
+				driver.manage().timeouts().implicitlyWait(previous);
+			} catch (RuntimeException ignored) {
+				// restauration best-effort : ne pas masquer l'éventuelle exception de l'opération
+			}
+		}
+	}
+
+	/**
+	 * Résout {@code locator} en {@link WebElementFacade} <b>paresseux</b> (le facade ré-résout le
+	 * {@code By} à chaque usage → no-leak, D3). Timeouts délégués à {@code 0} : le {@code fluentWait}
+	 * maison est la <b>seule horloge</b> (C8). Dans une vue {@code within}, résout d'abord le container
+	 * (récursif) <b>puis</b> le descendant — d'où l'ordre naturel « container avant child » au débogage.
+	 */
+	private WebElementFacade resolve(By locator) {
+		if (parent == null) {
+			return WebElementFacadeImpl.wrapWebElement(driver(), locator, 0L, 0L, locator.toString());
+		}
+		return parent.resolve(containerLocator).find(locator);
+	}
+
+	/**
+	 * Contexte de recherche de cette instance : le {@code driver} à la racine, sinon l'élément
+	 * <b>container</b> de la vue {@code within} (résolu récursivement). Utilisé par le diagnostic et les
+	 * collections pour chercher <b>dans</b> le bon périmètre. Lève si le container est introuvable.
+	 */
+	private SearchContext resolveScope(WebDriver driver) {
+		return parent == null ? driver : parent.resolveScope(driver).findElement(containerLocator);
+	}
+
+	/**
+	 * Attente explicite : délègue au {@code waitUntil*} de Serenity avec le {@code timeout} donné — une
+	 * <b>seule horloge</b> (pas d'enveloppe {@code fluentWait}, donc pas d'empilement C8), Serenity gérant
+	 * nativement les attentes positives et négatives. Toute exception au timeout est traduite en
+	 * {@link SyncException} (frontière D18, cause conservée).
+	 */
+	private void await(By locator, Duration awaitTimeout, Consumer<WebElementFacade> waitAction) {
+		try {
+			waitAction.accept(resolveForWait(locator, awaitTimeout));
+		} catch (RuntimeException failure) {
+			throw new SyncException("Attente non satisfaite sur " + locator + " après " + humanize(awaitTimeout), failure);
+		}
+	}
+
+	/** Facade résolu avec un timeout d'attente <b>réel</b> (pour les {@code waitUntil*}), contexte {@code within} inclus. */
+	private WebElementFacade resolveForWait(By locator, Duration awaitTimeout) {
+		long millis = awaitTimeout.toMillis();
+		if (parent == null) {
+			return WebElementFacadeImpl.wrapWebElement(driver(), locator, millis, millis, locator.toString());
+		}
+		return parent.resolveForWait(containerLocator, awaitTimeout).find(locator);
+	}
+
+	/**
+	 * Interroge un prédicat d'état sur l'élément résolu et rend l'état courant <b>sans jamais lever</b>
+	 * (comme les {@code is…}/{@code contains…} : élément absent → {@code false}). Ouvert aux sous-classes
+	 * (ex. prédicats web de {@code WebSync}) sans leur exposer le {@code WebElementFacade} lui-même.
+	 */
+	protected boolean query(By locator, Predicate<WebElementFacade> predicate) {
+		try {
+			return predicate.test(resolve(locator));
+		} catch (RuntimeException failure) {
+			if (SyncCondition.classify(failure).isPresent()) {
+				return false; // élément absent / pas prêt → false : un prédicat ne lève jamais (#2)
+			}
+			throw failure; // vrai bug (locator invalide…) → remonte
+		}
+	}
+
+	/**
+	 * Diagnostic actif au timeout : sonde l'état réel de l'élément, dans l'<b>ordre du flux</b>
+	 * d'interaction, et renvoie <b>toutes</b> les conditions en défaut. La résolution
+	 * ({@link SyncCondition#ABSENT}/{@link SyncCondition#STALE}) <b>court-circuite</b> l'étage action ;
+	 * l'interception (qui présuppose présent/visible/activé/dans la zone) n'est testée qu'en dernier
+	 * ressort. Best-effort : une sonde qui lève n'ajoute pas de faux positif.
+	 */
+	private Set<SyncCondition> diagnose(By locator) {
+		EnumSet<SyncCondition> conditions = EnumSet.noneOf(SyncCondition.class);
+		WebDriver driver;
+		try {
+			driver = driver();
+		} catch (RuntimeException noDriver) {
+			return conditions; // pas de driver → diagnostic vide (message générique « instable »)
+		}
+		SearchContext scope;
+		try {
+			scope = resolveScope(driver); // le container de la vue within (le driver à la racine)
+		} catch (NoSuchElementException containerAbsent) {
+			conditions.add(SyncCondition.ABSENT); // c'est le CONTAINER (within) qui manque
+			return conditions;
+		} catch (StaleElementReferenceException stale) {
+			conditions.add(SyncCondition.STALE);
+			return conditions;
+		}
+		WebElement element;
+		try {
+			element = scope.findElement(locator);
+		} catch (NoSuchElementException absent) {
+			conditions.add(SyncCondition.ABSENT);
+			return conditions;
+		} catch (StaleElementReferenceException stale) {
+			conditions.add(SyncCondition.STALE);
+			return conditions;
+		}
+		if (!probe(element::isDisplayed, true)) {
+			conditions.add(SyncCondition.HIDDEN);
+		}
+		if (!probe(element::isEnabled, true)) {
+			conditions.add(SyncCondition.DISABLED);
+		}
+		if (!inViewport(driver, element)) {
+			conditions.add(SyncCondition.OUT_OF_BOUNDS);
+		}
+		// L'interception présuppose que tout le reste est OK → testée en dernier, seule.
+		if (conditions.isEmpty() && isIntercepted(driver, element)) {
+			conditions.add(SyncCondition.INTERCEPTED);
+		}
+		return conditions;
+	}
+
+	/** Sonde booléenne best-effort : renvoie {@code onError} si l'appel lève (pas de faux positif). */
+	private static boolean probe(BooleanSupplier sonde, boolean onError) {
+		try {
+			return sonde.getAsBoolean();
+		} catch (RuntimeException failure) {
+			return onError;
+		}
+	}
+
+	/** L'élément est-il (au moins partiellement) dans le viewport ? Doute → {@code true} (pas de faux positif). */
+	private static boolean inViewport(WebDriver driver, WebElement element) {
+		return probe(() -> Boolean.TRUE.equals(js(driver).executeScript(
+				"var r=arguments[0].getBoundingClientRect();"
+						+ "return r.bottom>0 && r.right>0"
+						+ " && r.top<(window.innerHeight||document.documentElement.clientHeight)"
+						+ " && r.left<(window.innerWidth||document.documentElement.clientWidth);",
+				element)), true);
+	}
+
+	/** Un autre élément recouvre-t-il le point central de la cible ? Doute → {@code false} (pas de faux positif). */
+	private static boolean isIntercepted(WebDriver driver, WebElement element) {
+		return probe(() -> Boolean.TRUE.equals(js(driver).executeScript(
+				"var r=arguments[0].getBoundingClientRect();"
+						+ "var cx=r.left+r.width/2, cy=r.top+r.height/2;"
+						+ "var top=document.elementFromPoint(cx,cy);"
+						+ "return !(top===arguments[0] || arguments[0].contains(top)"
+						+ " || (top && top.contains(arguments[0])));",
+				element)), false);
+	}
+
+	private static JavascriptExecutor js(WebDriver driver) {
+		return (JavascriptExecutor) driver;
+	}
+
+	// ============================================================================================
+	// Sentinelle JS de détection d'async (lot 2c) — EMPLACEMENT RÉSERVÉ, à finaliser demain
+	// ============================================================================================
+
+	/**
+	 * Action <b>mutante</b> (susceptible de déclencher un chargement asynchrone / re-render). Aujourd'hui =
+	 * simple synchro par {@link #fluentWait}. Les commentaires ci-dessous marquent l'<b>emplacement</b> de
+	 * la sentinelle JS (lot 2c), à câbler sur la structure de référence :
+	 * <ul>
+	 *   <li><b>avant</b> l'action : déposer un <b>drapeau</b> dans le DOM ;</li>
+	 *   <li><b>après</b> l'action : relire le drapeau — <b>disparu</b> = un re-render a balayé le contexte
+	 *       (chargement async en cours) → attendre qu'il retombe ; <b>encore là</b> = rien de majeur.</li>
+	 * </ul>
+	 * Principe voulu : <b>cheap à vide</b> (pas de {@code sleep} systématique), polling uniquement s'il y a
+	 * réellement de l'async. Aucune {@code readyState} (l'async n'en change pas). Vide pour l'instant → aucun
+	 * impact perf.
+	 */
+	protected void act(By locator, Consumer<WebElementFacade> action) {
+		// ── Emplacement sentinelle JS (lot 2c) : dépôt du drapeau AVANT l'action ──
+		fluentWait(locator, element -> {
+			action.accept(element);
+			return null;
+		});
+		// ── Emplacement sentinelle JS (lot 2c) : relecture du drapeau APRÈS l'action ──
 	}
 
 	// ============================================================================================
@@ -69,26 +472,42 @@ public abstract class AbstractSyncManager {
 
 	/** Clique/active l'élément cible une fois visible et interactable (WebElement#click). */
 	public void click(By locator) {
+		act(locator, WebElementFacade::click);
 	}
 
 	/** Saisit du texte après avoir vidé le champ (WebElementFacade#type). */
 	public void type(By locator, CharSequence... keysToSend) {
+		fluentWait(locator, element -> {
+			element.type(keysToSend);
+			return null;
+		});
 	}
 
 	/**
 	 * Saisit une <b>valeur sensible</b> dans le champ cible : la valeur en clair ({@code secret.value()})
-	 * est tapée dans le DOM, mais le log d'action ne montre que le rendu <b>masqué</b> ({@code secret}
-	 * via son {@code toString()}). Point unique où un {@link Secret} est déballé pour la saisie.
+	 * est tapée dans le DOM. <b>Point unique</b> où un {@link Secret} est déballé pour la saisie. Le
+	 * <b>log d'action masqué</b> ({@code secret.toString()}) sera ajouté avec le domaine LOG (différé) ; le
+	 * masquage du DOM à l'échec est déjà couvert par le blanking des champs {@code type=password}
+	 * ({@code TestFailureManager}).
 	 */
 	public void type(By locator, Secret secret) {
+		fluentWait(locator, element -> {
+			element.type(secret.value());
+			return null;
+		});
 	}
 
 	/** Saisit du texte puis presse Entrée (WebElementFacade#typeAndEnter). */
 	public void typeAndEnter(By locator, String value) {
+		act(locator, element -> element.typeAndEnter(value));
 	}
 
 	/** Vide la valeur de l'élément cible (WebElement#clear). */
 	public void clear(By locator) {
+		fluentWait(locator, element -> {
+			element.clear();
+			return null;
+		});
 	}
 
 	// ============================================================================================
@@ -97,47 +516,53 @@ public abstract class AbstractSyncManager {
 
 	/** Texte visible de l'élément cible (WebElement#getText). */
 	public String getText(By locator) {
-		return null;
+		return fluentWait(locator, WebElementFacade::getText);
 	}
 
 	/** Texte « effectif » résolu par Serenity (valeur de champ ou texte selon l'élément) (WebElementState#getTextValue). */
 	public String getTextValue(By locator) {
-		return null;
+		return fluentWait(locator, WebElementFacade::getTextValue);
 	}
 
 	/** Valeur de l'attribut {@code value} (WebElementFacade#getValue). */
 	public String getValue(By locator) {
-		return null;
+		return fluentWait(locator, WebElementFacade::getValue);
 	}
 
 	/** Nom de balise / type d'élément (WebElement#getTagName). */
 	public String getTagName(By locator) {
-		return null;
+		return fluentWait(locator, WebElementFacade::getTagName);
 	}
 
-	/** Valeur résolue attribut/propriété (WebElement#getAttribute). */
+	/**
+	 * Valeur résolue attribut/propriété (WebElement#getAttribute). {@code getAttribute} est <b>déprécié</b>
+	 * par Selenium 4 mais <b>conservé</b> ici : sa sémantique « valeur résolue » (attribut HTML + propriété
+	 * DOM) n'est reproduite par aucun de {@link #getDomAttribute}/{@link #getDomProperty} pris seul, et il
+	 * fait partie du contrat public gelé.
+	 */
+	@SuppressWarnings("deprecation")
 	public String getAttribute(By locator, String name) {
-		return null;
+		return fluentWait(locator, element -> element.getAttribute(name));
 	}
 
 	/** Valeur de l'attribut DOM/élément (WebElement#getDomAttribute). */
 	public String getDomAttribute(By locator, String name) {
-		return null;
+		return fluentWait(locator, element -> element.getDomAttribute(name));
 	}
 
 	/** Valeur de la propriété DOM/élément (WebElement#getDomProperty). */
 	public String getDomProperty(By locator, String name) {
-		return null;
+		return fluentWait(locator, element -> element.getDomProperty(name));
 	}
 
 	/** Rôle WAI-ARIA / rôle d'accessibilité calculé (WebElement#getAriaRole). */
 	public String getAriaRole(By locator) {
-		return null;
+		return fluentWait(locator, WebElementFacade::getAriaRole);
 	}
 
 	/** Nom accessible calculé (WebElement#getAccessibleName). */
 	public String getAccessibleName(By locator) {
-		return null;
+		return fluentWait(locator, WebElementFacade::getAccessibleName);
 	}
 
 	// ============================================================================================
@@ -146,109 +571,159 @@ public abstract class AbstractSyncManager {
 
 	/** L'élément cible est-il sélectionné/coché (WebElement#isSelected). */
 	public boolean isSelected(By locator) {
-		return false;
+		return query(locator, WebElementFacade::isSelected);
 	}
 
 	/** L'élément cible est-il activé (WebElement#isEnabled). */
 	public boolean isEnabled(By locator) {
-		return false;
+		return query(locator, WebElementFacade::isEnabled);
 	}
 
 	/** L'élément cible est-il désactivé (WebElementState#isDisabled). */
 	public boolean isDisabled(By locator) {
-		return false;
+		return resolve(locator).isDisabled();
 	}
 
-	/** L'élément cible est-il affiché, avec attente courte (WebElementState#isVisible). */
-	public boolean isDisplayed(By locator) {
-		return false;
+	/** L'élément cible est-il visible, avec attente courte (WebElementState#isVisible). */
+	public boolean isVisible(By locator) {
+		return resolve(locator).isVisible();
 	}
 
 	/** L'élément cible est-il affiché immédiatement, sans attente (WebElementState#isCurrentlyVisible). */
 	public boolean isCurrentlyVisible(By locator) {
-		return false;
+		return resolve(locator).isCurrentlyVisible();
 	}
 
 	/** L'élément cible est-il interactable / cliquable (WebElementState#isClickable). */
 	public boolean isClickable(By locator) {
-		return false;
+		return resolve(locator).isClickable();
 	}
 
 	/** L'élément cible est-il présent dans l'arbre (WebElementState#isPresent). */
 	public boolean isPresent(By locator) {
-		return false;
+		return resolve(locator).isPresent();
 	}
 
 	/** L'élément cible a-t-il le focus (WebElementState#hasFocus). */
 	public boolean hasFocus(By locator) {
-		return false;
+		return resolve(locator).hasFocus();
 	}
 
 	/** L'élément cible contient-il le texte donné (WebElementState#containsText). */
 	public boolean containsText(By locator, String value) {
-		return false;
+		return resolve(locator).containsText(value);
 	}
 
 	/** L'élément cible a-t-il exactement ce texte (WebElementState#containsOnlyText). */
 	public boolean containsOnlyText(By locator, String value) {
-		return false;
+		return resolve(locator).containsOnlyText(value);
 	}
 
 	/** L'élément cible contient-il la valeur donnée (WebElementState#containsValue). */
 	public boolean containsValue(By locator, String value) {
-		return false;
+		return resolve(locator).containsValue(value);
 	}
 
 	// ============================================================================================
-	// Assertions d'état communes (should* → void : lèvent en cas d'échec, no-leak)
+	// Assertions d'état communes (should* → void) : attendre la condition, sinon AssertionError
+	// via le soft-assert (D22-bis). Messages lisibles, centralisés (non verrouillés).
 	// ============================================================================================
 
-	/** Échoue si l'élément n'est pas visible (WebElementState#shouldBeVisible). */
+	static final String MSG_BE_VISIBLE = "L'élément devrait être visible";
+	static final String MSG_BE_CURRENTLY_VISIBLE = "L'élément devrait être visible immédiatement";
+	static final String MSG_NOT_BE_VISIBLE = "L'élément ne devrait pas être visible";
+	static final String MSG_BE_PRESENT = "L'élément devrait être présent";
+	static final String MSG_NOT_BE_PRESENT = "L'élément ne devrait pas être présent";
+	static final String MSG_BE_ENABLED = "L'élément devrait être activé";
+	static final String MSG_NOT_BE_ENABLED = "L'élément ne devrait pas être activé";
+	static final String MSG_BE_SELECTED = "L'élément devrait être sélectionné";
+	static final String MSG_NOT_BE_SELECTED = "L'élément ne devrait pas être sélectionné";
+	static final String MSG_CONTAIN_TEXT = "L'élément devrait contenir le texte";
+	static final String MSG_CONTAIN_ONLY_TEXT = "L'élément devrait contenir uniquement le texte";
+	static final String MSG_NOT_CONTAIN_TEXT = "L'élément ne devrait pas contenir le texte";
+
+	/**
+	 * Assertion avec attente : poll {@code condition} (un prédicat <b>immédiat</b>) jusqu'au timeout du
+	 * profil ; si elle n'est jamais satisfaite, lève une {@link AssertionError} portant {@code message}.
+	 * Le tout passe par {@link SoftAssertions#check} → en mode <b>soft</b> l'échec est collecté (le test
+	 * tombera en fin de test), en mode <b>hard</b> il est relancé aussitôt. Point de branchement unique
+	 * des {@code should…} (D22-bis) — une seule horloge (la boucle), le prédicat n'attend pas lui-même.
+	 */
+	protected void tryAssert(By locator, BooleanSupplier condition, String message) {
+		SoftAssertions.check(() -> withoutImplicitWait(() -> {
+			long deadlineNanos = System.nanoTime() + resolveTimeout().toNanos();
+			while (!condition.getAsBoolean()) {
+				if (System.nanoTime() >= deadlineNanos) {
+					throw new AssertionError(message + " : " + locator);
+				}
+				sleepQuietly(resolvePolling());
+			}
+			return null;
+		}));
+	}
+
+	/** Échoue si l'élément n'est pas (ou ne devient pas) visible (WebElementState#shouldBeVisible). */
 	public void shouldBeVisible(By locator) {
+		tryAssert(locator, () -> isVisible(locator), MSG_BE_VISIBLE);
 	}
 
-	/** Échoue si l'élément n'est pas visible immédiatement (WebElementState#shouldBeCurrentlyVisible). */
+	/** Échoue si l'élément n'est pas visible <b>immédiatement</b> (WebElementState#shouldBeCurrentlyVisible). */
 	public void shouldBeCurrentlyVisible(By locator) {
+		SoftAssertions.check(() -> {
+			if (!isCurrentlyVisible(locator)) {
+				throw new AssertionError(MSG_BE_CURRENTLY_VISIBLE + " : " + locator);
+			}
+		});
 	}
 
-	/** Échoue si l'élément est visible (WebElementState#shouldNotBeVisible). */
+	/** Échoue si l'élément reste visible (WebElementState#shouldNotBeVisible). */
 	public void shouldNotBeVisible(By locator) {
+		tryAssert(locator, () -> !isVisible(locator), MSG_NOT_BE_VISIBLE);
 	}
 
-	/** Échoue si l'élément n'est pas présent (WebElementState#shouldBePresent). */
+	/** Échoue si l'élément n'est pas (ou ne devient pas) présent (WebElementState#shouldBePresent). */
 	public void shouldBePresent(By locator) {
+		tryAssert(locator, () -> isPresent(locator), MSG_BE_PRESENT);
 	}
 
-	/** Échoue si l'élément est présent (WebElementState#shouldNotBePresent). */
+	/** Échoue si l'élément reste présent (WebElementState#shouldNotBePresent). */
 	public void shouldNotBePresent(By locator) {
+		tryAssert(locator, () -> !isPresent(locator), MSG_NOT_BE_PRESENT);
 	}
 
-	/** Échoue si l'élément n'est pas activé (WebElementState#shouldBeEnabled). */
+	/** Échoue si l'élément n'est pas (ou ne devient pas) activé (WebElementState#shouldBeEnabled). */
 	public void shouldBeEnabled(By locator) {
+		tryAssert(locator, () -> isEnabled(locator), MSG_BE_ENABLED);
 	}
 
-	/** Échoue si l'élément est activé (WebElementState#shouldNotBeEnabled). */
+	/** Échoue si l'élément reste activé (WebElementState#shouldNotBeEnabled). */
 	public void shouldNotBeEnabled(By locator) {
+		tryAssert(locator, () -> !isEnabled(locator), MSG_NOT_BE_ENABLED);
 	}
 
-	/** Échoue si l'élément n'est pas sélectionné (WebElementState#shouldBeSelected). */
+	/** Échoue si l'élément n'est pas (ou ne devient pas) sélectionné (WebElementState#shouldBeSelected). */
 	public void shouldBeSelected(By locator) {
+		tryAssert(locator, () -> isSelected(locator), MSG_BE_SELECTED);
 	}
 
-	/** Échoue si l'élément est sélectionné (WebElementState#shouldNotBeSelected). */
+	/** Échoue si l'élément reste sélectionné (WebElementState#shouldNotBeSelected). */
 	public void shouldNotBeSelected(By locator) {
+		tryAssert(locator, () -> !isSelected(locator), MSG_NOT_BE_SELECTED);
 	}
 
-	/** Échoue si l'élément ne contient pas le texte donné (WebElementState#shouldContainText). */
+	/** Échoue si l'élément ne contient pas (ou ne finit pas par contenir) le texte (WebElementState#shouldContainText). */
 	public void shouldContainText(By locator, String textValue) {
+		tryAssert(locator, () -> containsText(locator, textValue), MSG_CONTAIN_TEXT + " « " + textValue + " »");
 	}
 
 	/** Échoue si l'élément ne contient pas exactement ce texte (WebElementState#shouldContainOnlyText). */
 	public void shouldContainOnlyText(By locator, String textValue) {
+		tryAssert(locator, () -> containsOnlyText(locator, textValue), MSG_CONTAIN_ONLY_TEXT + " « " + textValue + " »");
 	}
 
-	/** Échoue si l'élément contient le texte donné (WebElementState#shouldNotContainText). */
+	/** Échoue si l'élément contient (ou continue de contenir) le texte (WebElementState#shouldNotContainText). */
 	public void shouldNotContainText(By locator, String textValue) {
+		tryAssert(locator, () -> !containsText(locator, textValue), MSG_NOT_CONTAIN_TEXT + " « " + textValue + " »");
 	}
 
 	// ============================================================================================
@@ -257,36 +732,49 @@ public abstract class AbstractSyncManager {
 
 	/** Coin supérieur gauche de l'élément rendu (WebElement#getLocation). */
 	public Point getLocation(By locator) {
-		return null;
+		return fluentWait(locator, WebElementFacade::getLocation);
 	}
 
 	/** Largeur/hauteur de l'élément rendu (WebElement#getSize). */
 	public Dimension getSize(By locator) {
-		return null;
+		return fluentWait(locator, WebElementFacade::getSize);
 	}
 
 	/** Position et taille de l'élément rendu (WebElement#getRect). */
 	public Rectangle getRect(By locator) {
-		return null;
+		return fluentWait(locator, WebElementFacade::getRect);
 	}
 
 	/** Capture d'écran de l'élément cible (WebElement#getScreenshotAs / TakesScreenshot). */
 	public <X> X getScreenshotAs(By locator, OutputType<X> target) {
-		return null;
+		return fluentWait(locator, element -> element.getScreenshotAs(target));
 	}
 
 	// ============================================================================================
 	// Collections communes (sans handle vivant)
 	// ============================================================================================
 
-	/** Nombre d'éléments correspondant au locator (remplace findElements brut). */
+	/** Nombre d'éléments correspondant au locator (remplace findElements brut) — état courant, sans attente. */
 	public int count(By locator) {
-		return 0;
+		return findAll(locator).size();
 	}
 
 	/** Textes visibles de tous les éléments correspondant au locator (information extraite, non stale). */
 	public List<String> getTexts(By locator) {
-		return null;
+		return findAll(locator).stream().map(WebElement::getText).toList();
+	}
+
+	/**
+	 * Éléments correspondant au locator dans le <b>scope</b> courant (le document à la racine, le container
+	 * within sinon). État courant, sans attente : container introuvable → liste vide (jamais d'exception).
+	 */
+	private List<WebElement> findAll(By locator) {
+		WebDriver driver = driver();
+		try {
+			return resolveScope(driver).findElements(locator);
+		} catch (NoSuchElementException | StaleElementReferenceException containerGone) {
+			return List.of();
+		}
 	}
 
 	// ============================================================================================
@@ -295,33 +783,41 @@ public abstract class AbstractSyncManager {
 
 	/** Attend que l'élément cible devienne visible (WebElementFacade#waitUntilVisible). */
 	public void waitUntilVisible(By locator) {
+		await(locator, resolveTimeout(), WebElementFacade::waitUntilVisible);
 	}
 
 	/** Attend que l'élément cible devienne présent (WebElementFacade#waitUntilPresent). */
 	public void waitUntilPresent(By locator) {
+		await(locator, resolveTimeout(), WebElementFacade::waitUntilPresent);
 	}
 
 	/** Attend que l'élément cible devienne invisible (WebElementFacade#waitUntilNotVisible). */
 	public void waitUntilNotVisible(By locator) {
+		await(locator, resolveTimeout(), WebElementFacade::waitUntilNotVisible);
 	}
 
 	/** Attend que l'élément cible devienne cliquable/interactable (WebElementFacade#waitUntilClickable). */
 	public void waitUntilClickable(By locator) {
+		await(locator, resolveTimeout(), WebElementFacade::waitUntilClickable);
 	}
 
 	/** Attend que l'élément cible devienne activé (WebElementFacade#waitUntilEnabled). */
 	public void waitUntilEnabled(By locator) {
+		await(locator, resolveTimeout(), WebElementFacade::waitUntilEnabled);
 	}
 
 	/** Attend que l'élément cible devienne désactivé (WebElementFacade#waitUntilDisabled). */
 	public void waitUntilDisabled(By locator) {
+		await(locator, resolveTimeout(), WebElementFacade::waitUntilDisabled);
 	}
 
 	/** Attend la présence/interactabilité de l'élément cible jusqu'au timeout fourni. */
 	public void waitForElement(By locator, Duration timeout) {
+		await(locator, timeout, WebElementFacade::waitUntilVisible);
 	}
 
 	/** Attend la disparition de l'élément cible jusqu'au timeout fourni. */
 	public void waitForElementToDisappear(By locator, Duration timeout) {
+		await(locator, timeout, WebElementFacade::waitUntilNotVisible);
 	}
 }

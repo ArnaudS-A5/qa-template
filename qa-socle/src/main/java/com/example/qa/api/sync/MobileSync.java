@@ -36,9 +36,24 @@ import com.example.qa.internal.sync.AbstractSyncManager;
  */
 public class MobileSync extends AbstractSyncManager {
 
+	/** Façade mobile au profil de timeout par défaut ({@link SyncTimeout#MEDIUM}). */
+	public MobileSync() {
+		super(SyncTimeout.MEDIUM);
+	}
+
+	/** Façade mobile au profil de timeout donné (zone plus ou moins lente à se charger). */
+	public MobileSync(SyncTimeout timeout) {
+		super(timeout);
+	}
+
+	/** Vue bornée {@code within} (usage interne, cf. {@link #within(By)}). */
+	protected MobileSync(AbstractSyncManager parent, By container) {
+		super(parent, container);
+	}
+
 	@Override
 	public MobileSync within(By container) {
-		return null;
+		return new MobileSync(this, container);
 	}
 
 	// ============================================================================================

@@ -1,6 +1,7 @@
 package com.example.qa.api.sync;
 
 import java.util.List;
+import net.serenitybdd.core.pages.WebElementFacade;
 import org.openqa.selenium.By;
 import com.example.qa.internal.sync.AbstractSyncManager;
 
@@ -29,9 +30,24 @@ import com.example.qa.internal.sync.AbstractSyncManager;
  */
 public class WebSync extends AbstractSyncManager {
 
+	/** Façade web au profil de timeout par défaut ({@link SyncTimeout#MEDIUM}). */
+	public WebSync() {
+		super(SyncTimeout.MEDIUM);
+	}
+
+	/** Façade web au profil de timeout donné (zone plus ou moins lente à se charger). */
+	public WebSync(SyncTimeout timeout) {
+		super(timeout);
+	}
+
+	/** Vue bornée {@code within} (usage interne, cf. {@link #within(By)}). */
+	protected WebSync(AbstractSyncManager parent, By container) {
+		super(parent, container);
+	}
+
 	@Override
 	public WebSync within(By container) {
-		return null;
+		return new WebSync(this, container);
 	}
 
 	// ============================================================================================
@@ -40,22 +56,30 @@ public class WebSync extends AbstractSyncManager {
 
 	/** Soumet le formulaire contenant l'élément cible (WebElement#submit). */
 	public void submit(By locator) {
+		act(locator, WebElementFacade::submit);
 	}
 
 	/** Double-clic sur l'élément cible (WebElementFacade#doubleClick). */
 	public void doubleClick(By locator) {
+		act(locator, WebElementFacade::doubleClick);
 	}
 
 	/** Clic droit / contextuel sur l'élément cible (WebElementFacade#contextClick). */
 	public void contextClick(By locator) {
+		act(locator, WebElementFacade::contextClick);
 	}
 
 	/** Saisit du texte puis presse Tab (WebElementFacade#typeAndTab). */
 	public void typeAndTab(By locator, String value) {
+		act(locator, element -> element.typeAndTab(value));
 	}
 
 	/** Donne le focus fenêtre à l'élément cible (WebElementFacade#setWindowFocus). */
 	public void setWindowFocus(By locator) {
+		fluentWait(locator, element -> {
+			element.setWindowFocus();
+			return null;
+		});
 	}
 
 	// ============================================================================================
@@ -63,70 +87,102 @@ public class WebSync extends AbstractSyncManager {
 	// ============================================================================================
 
 	/** Sélectionne une option par son libellé visible (WebElementFacade#selectByVisibleText). */
-	public void selectByLabel(By locator, String label) {
+	public void selectByVisibleText(By locator, String visibleText) {
+		fluentWait(locator, element -> {
+			element.selectByVisibleText(visibleText);
+			return null;
+		});
 	}
 
 	/** Sélectionne une option par sa valeur (WebElementFacade#selectByValue). */
 	public void selectByValue(By locator, String value) {
+		fluentWait(locator, element -> {
+			element.selectByValue(value);
+			return null;
+		});
 	}
 
 	/** Sélectionne une option par son index (WebElementFacade#selectByIndex). */
 	public void selectByIndex(By locator, int index) {
+		fluentWait(locator, element -> {
+			element.selectByIndex(index);
+			return null;
+		});
 	}
 
 	/** Désélectionne une option par son libellé visible (WebElementFacade#deselectByVisibleText). */
-	public void deselectByLabel(By locator, String label) {
+	public void deselectByVisibleText(By locator, String visibleText) {
+		fluentWait(locator, element -> {
+			element.deselectByVisibleText(visibleText);
+			return null;
+		});
 	}
 
 	/** Désélectionne une option par sa valeur (WebElementFacade#deselectByValue). */
 	public void deselectByValue(By locator, String value) {
+		fluentWait(locator, element -> {
+			element.deselectByValue(value);
+			return null;
+		});
 	}
 
 	/** Désélectionne une option par son index (WebElementFacade#deselectByIndex). */
 	public void deselectByIndex(By locator, int index) {
+		fluentWait(locator, element -> {
+			element.deselectByIndex(index);
+			return null;
+		});
 	}
 
 	/** Désélectionne toutes les options (WebElementFacade#deselectAll). */
 	public void deselectAll(By locator) {
+		fluentWait(locator, element -> {
+			element.deselectAll();
+			return null;
+		});
 	}
 
 	/** Libellés visibles de toutes les options de la liste (WebElementFacade#getSelectOptions). */
 	public List<String> getSelectOptions(By locator) {
-		return null;
+		return fluentWait(locator, WebElementFacade::getSelectOptions);
 	}
 
 	/** Valeurs de toutes les options de la liste (WebElementFacade#getSelectOptionValues). */
 	public List<String> getSelectOptionValues(By locator) {
-		return null;
+		return fluentWait(locator, WebElementFacade::getSelectOptionValues);
 	}
 
 	/** Libellé visible de la 1ʳᵉ option sélectionnée (WebElementFacade#getFirstSelectedOptionVisibleText). */
-	public String getSelectedLabel(By locator) {
-		return null;
+	public String getFirstSelectedOptionVisibleText(By locator) {
+		return fluentWait(locator, WebElementFacade::getFirstSelectedOptionVisibleText);
 	}
 
 	/** Libellés visibles de toutes les options sélectionnées (WebElementState#getSelectedVisibleTexts). */
-	public List<String> getSelectedLabels(By locator) {
-		return null;
+	public List<String> getSelectedVisibleTexts(By locator) {
+		return fluentWait(locator, WebElementFacade::getSelectedVisibleTexts);
 	}
 
 	/** Valeur de la 1ʳᵉ option sélectionnée (WebElementFacade#getFirstSelectedOptionValue). */
-	public String getSelectedValue(By locator) {
-		return null;
+	public String getFirstSelectedOptionValue(By locator) {
+		return fluentWait(locator, WebElementFacade::getFirstSelectedOptionValue);
 	}
 
 	/** Valeurs de toutes les options sélectionnées (WebElementState#getSelectedValues). */
 	public List<String> getSelectedValues(By locator) {
-		return null;
+		return fluentWait(locator, WebElementFacade::getSelectedValues);
 	}
 
 	/** La liste déroulante contient-elle l'option donnée (WebElementState#containsSelectOption). */
 	public boolean containsSelectOption(By locator, String value) {
-		return false;
+		return query(locator, element -> element.containsSelectOption(value));
 	}
 
-	/** Échoue si la liste ne contient pas l'option sélectionnée donnée (WebElementState#shouldContainSelectedOption). */
+	/** Message d'échec de {@link #shouldContainSelectedOption} (lisible, non verrouillé). */
+	private static final String MSG_CONTAIN_SELECTED_OPTION = "La liste devrait contenir l'option";
+
+	/** Échoue si la liste ne contient pas (ou ne finit pas par contenir) l'option (WebElementState#shouldContainSelectedOption). */
 	public void shouldContainSelectedOption(By locator, String textValue) {
+		tryAssert(locator, () -> containsSelectOption(locator, textValue), MSG_CONTAIN_SELECTED_OPTION + " « " + textValue + " »");
 	}
 
 	// ============================================================================================
@@ -135,26 +191,26 @@ public class WebSync extends AbstractSyncManager {
 
 	/** Texte interne brut, y compris masqué (WebElementFacade#getTextContent). */
 	public String getTextContent(By locator) {
-		return null;
+		return fluentWait(locator, WebElementFacade::getTextContent);
 	}
 
 	/** Libellé ARIA résolu par Serenity (WebElementFacade#getAriaLabel). */
 	public String getAriaLabel(By locator) {
-		return null;
+		return fluentWait(locator, WebElementFacade::getAriaLabel);
 	}
 
 	/** Valeur calculée d'une propriété CSS (WebElement#getCssValue). */
 	public String getCssValue(By locator, String propertyName) {
-		return null;
+		return fluentWait(locator, element -> element.getCssValue(propertyName));
 	}
 
 	/** L'élément cible porte-t-il la classe CSS donnée (WebElementFacade#hasClass). */
 	public boolean hasClass(By locator, String cssClassName) {
-		return false;
+		return query(locator, element -> element.hasClass(cssClassName));
 	}
 
 	/** Le conteneur cible contient-il des éléments correspondant au sélecteur (WebElementFacade#containsElements). */
 	public boolean containsElements(By locator, By childSelector) {
-		return false;
+		return query(locator, element -> element.containsElements(childSelector));
 	}
 }
