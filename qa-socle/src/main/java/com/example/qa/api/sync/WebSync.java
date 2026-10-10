@@ -3,6 +3,8 @@ package com.example.qa.api.sync;
 import java.util.List;
 import net.serenitybdd.core.pages.WebElementFacade;
 import org.openqa.selenium.By;
+import org.openqa.selenium.Keys;
+import org.openqa.selenium.interactions.Actions;
 import com.example.qa.internal.sync.AbstractSyncManager;
 
 /**
@@ -61,17 +63,21 @@ public class WebSync extends AbstractSyncManager {
 
 	/** Double-clic sur l'élément cible (WebElementFacade#doubleClick). */
 	public void doubleClick(By locator) {
-		act(locator, WebElementFacade::doubleClick);
+		actRaw(locator, element -> new Actions(currentDriver()).doubleClick(element).perform());
 	}
 
 	/** Clic droit / contextuel sur l'élément cible (WebElementFacade#contextClick). */
 	public void contextClick(By locator) {
-		act(locator, WebElementFacade::contextClick);
+		actRaw(locator, element -> new Actions(currentDriver()).contextClick(element).perform());
 	}
 
 	/** Saisit du texte puis presse Tab (WebElementFacade#typeAndTab). */
 	public void typeAndTab(By locator, String value) {
-		act(locator, element -> element.typeAndTab(value));
+		actRaw(locator, element -> {
+			element.clear();
+			element.sendKeys(value);
+			element.sendKeys(Keys.TAB);
+		});
 	}
 
 	/** Donne le focus fenêtre à l'élément cible (WebElementFacade#setWindowFocus). */

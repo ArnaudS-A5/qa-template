@@ -1,8 +1,10 @@
 package com.example.qa.internal.sync;
 
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
@@ -14,12 +16,16 @@ import java.util.stream.Collectors;
 import net.serenitybdd.core.pages.WebElementFacade;
 import net.serenitybdd.core.pages.WebElementFacadeImpl;
 import net.serenitybdd.model.environment.EnvironmentSpecificConfiguration;
+import net.thucydides.core.steps.StepEventBus;
+import net.thucydides.core.webdriver.ConfigurableTimeouts;
 import net.thucydides.core.webdriver.ThucydidesWebDriverSupport;
 import net.thucydides.model.environment.SystemEnvironmentVariables;
 import net.thucydides.model.util.EnvironmentVariables;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
+import org.openqa.selenium.InvalidElementStateException;
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.Keys;
 import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.Point;
@@ -67,10 +73,16 @@ public abstract class AbstractSyncManager {
 	private final By containerLocator;
 
 	/**
-	 * Marqueur d'instance (thread-confiné, <b>non {@code static}</b>) : le plafond de chargement de page
-	 * n'est posé qu'<b>une seule fois</b> sur le driver, au 1ᵉʳ contact de cette instance. Cf. {@link #driver()}.
+	 * <b>Driver</b> sur lequel le plafond de chargement de page a déjà été posé (thread-confiné,
+	 * <b>non {@code static}</b>) — et non un simple booléen « déjà fait ».
+	 *
+	 * <p>La distinction est un correctif : le réglage porte sur le <b>driver</b>, pas sur l'instance de
+	 * synchro. Avec un booléen, une instance conservée pendant que Serenity <b>recrée</b> le driver
+	 * (redémarrage de navigateur en cours de session) restait marquée « déjà posé » et le nouveau driver
+	 * tournait <b>sans plafond</b>. En mémorisant l'identité du driver, tout changement le rétablit.
+	 * Cf. {@link #driver()}.
 	 */
-	private boolean pageLoadTimeoutApplied;
+	private WebDriver pageLoadTimeoutAppliedTo;
 
 	/** Construit un moteur racine adossé au profil de timeout donné (jamais {@code null}). */
 	protected AbstractSyncManager(SyncTimeout timeout) {
@@ -234,17 +246,24 @@ public abstract class AbstractSyncManager {
 	}
 
 	/**
-	 * Driver Serenity du thread courant. Au <b>1ᵉʳ contact</b> de cette instance, pose <b>une seule fois</b>
-	 * le plafond {@link #resolvePageLoadTimeout()} sur le driver — <b>automatique</b>, sans aucun geste
-	 * consommateur ni type public ajouté (option A du lot 2c). Idempotent par instance (marqueur
-	 * {@link #pageLoadTimeoutApplied} <b>non {@code static}</b>, donc thread-safe) ; le réglage Selenium
-	 * étant <b>dynamique</b> (il vaut pour les navigations suivantes), l'appliquer au 1ᵉʳ accès du socle
-	 * suffit. Best-effort : un driver/contexte qui refuse le réglage ne fait pas échouer le test.
+	 * Driver Serenity du thread courant. Pose le plafond {@link #resolvePageLoadTimeout()} <b>une fois par
+	 * driver</b>, au 1ᵉʳ contact du socle avec celui-ci — <b>automatique</b>, sans aucun geste consommateur
+	 * ni type public ajouté. Le marqueur retient <b>l'identité du driver</b>
+	 * ({@link #pageLoadTimeoutAppliedTo}, non {@code static} → thread-safe) et non un simple « déjà fait » :
+	 * si Serenity <b>recrée</b> le driver en cours de session, le plafond est <b>reposé</b> sur le nouveau.
+	 * Le réglage Selenium étant <b>dynamique</b> (il vaut pour les navigations suivantes), l'appliquer au
+	 * 1ᵉʳ accès suffit. Best-effort : un driver/contexte qui refuse le réglage ne fait pas échouer le test.
+	 *
+	 * <p><b>Portée assumée</b> : une navigation effectuée <b>avant</b> tout appel au socle (typiquement le
+	 * {@code openUrl} d'ouverture d'un test) n'est pas couverte — elle retombe sur le défaut W3C du
+	 * navigateur (300 s). Protéger ce cas supposerait soit de prendre la main sur la fabrique de driver
+	 * Serenity, soit d'imposer une navigation par le socle (mécanisme opt-in que D16 écarte). Écart
+	 * documenté, cf. {@code points-attention.md} (PA-8).
 	 */
 	private WebDriver driver() {
 		WebDriver driver = ThucydidesWebDriverSupport.getDriver();
-		if (!pageLoadTimeoutApplied) {
-			pageLoadTimeoutApplied = true; // posé d'abord : un refus ne doit pas re-tenter à chaque résolution
+		if (driver != pageLoadTimeoutAppliedTo) {
+			pageLoadTimeoutAppliedTo = driver; // posé d'abord : un refus ne doit pas re-tenter à chaque résolution
 			try {
 				driver.manage().timeouts().pageLoadTimeout(resolvePageLoadTimeout());
 			} catch (RuntimeException refused) {
@@ -255,20 +274,32 @@ public abstract class AbstractSyncManager {
 	}
 
 	/**
-	 * Exécute {@code operation} avec l'<b>implicit wait natif</b> Serenity/Selenium <b>neutralisé à 0</b>,
-	 * puis le <b>restaure</b> (try/finally). Objectif (C8, lot 2c) : garder <b>deux attentes distinctes</b> —
-	 * le polling du socle ({@link #fluentWait}, {@link #tryAssert}) reste <b>fin</b> (250 ms) et ne
-	 * s'additionne <b>jamais</b> à l'implicit wait (3 s), lequel n'est là que comme <b>filet pour les appels
-	 * Selenium bruts</b> du consommateur (hors {@code WebSync}). Le driver est confiné au thread → sûr en
-	 * parallèle. Best-effort : si le driver ne donne pas accès aux {@code timeouts}, on exécute sans toggle.
+	 * Exécute {@code operation} avec l'<b>implicit wait neutralisé à 0</b>, puis le <b>restaure</b>
+	 * (try/finally). Objectif (C8) : garder <b>deux attentes distinctes</b> — le polling du socle
+	 * ({@link #fluentWait}, {@link #actRaw}, {@link #query}, {@link #tryAssert}) reste <b>fin</b> (250 ms)
+	 * et ne s'additionne <b>jamais</b> à l'implicit wait (3 s), lequel n'est là que comme <b>filet pour les
+	 * appels Selenium bruts</b> du consommateur (hors {@code WebSync}).
+	 *
+	 * <p><b>La neutralisation passe par {@link ConfigurableTimeouts}</b> (API Serenity), et <b>non</b> par
+	 * {@code driver.manage().timeouts().implicitlyWait(...)}. Raison vérifiée au navigateur : le
+	 * {@code WebDriverFacade} de Serenity maintient son <b>propre</b> implicit timeout, au-dessus du driver
+	 * natif — c'est celui-là que consulte la résolution d'élément. Régler le driver natif à 0 laissait donc
+	 * la couche Serenity attendre ses 3 s : chaque prédicat coûtait ~3 s (T14 mesuré à 12 s pour quatre
+	 * prédicats) et une action pouvait « absorber » l'attente au point de faire réussir un cas qui devait
+	 * expirer (L4, L5). Le driver est confiné au thread → sûr en parallèle. Best-effort : driver absent,
+	 * non-Serenity ou timeouts inaccessibles → l'opération s'exécute sans toggle.
 	 */
 	private <T> T withoutImplicitWait(Supplier<T> operation) {
-		WebDriver driver;
+		ConfigurableTimeouts timeouts;
 		Duration previous;
 		try {
-			driver = driver();
-			previous = driver.manage().timeouts().getImplicitWaitTimeout();
-			driver.manage().timeouts().implicitlyWait(Duration.ZERO);
+			WebDriver driver = driver();
+			if (!(driver instanceof ConfigurableTimeouts configurable)) {
+				return operation.get(); // driver hors Serenity → rien à neutraliser à ce niveau
+			}
+			timeouts = configurable;
+			previous = timeouts.getCurrentImplicitTimeout();
+			timeouts.setImplicitTimeout(Duration.ZERO);
 		} catch (RuntimeException noToggle) {
 			return operation.get(); // pas de driver / timeouts inaccessibles → exécution sans toggle
 		}
@@ -276,7 +307,7 @@ public abstract class AbstractSyncManager {
 			return operation.get();
 		} finally {
 			try {
-				driver.manage().timeouts().implicitlyWait(previous);
+				timeouts.setImplicitTimeout(previous);
 			} catch (RuntimeException ignored) {
 				// restauration best-effort : ne pas masquer l'éventuelle exception de l'opération
 			}
@@ -291,10 +322,22 @@ public abstract class AbstractSyncManager {
 	 */
 	private WebElementFacade resolve(By locator) {
 		if (parent == null) {
-			return WebElementFacadeImpl.wrapWebElement(driver(), locator, 0L, 0L, locator.toString());
+			return WebElementFacadeImpl.wrapWebElement(driver(), locator, NO_FACADE_CLOCK, NO_FACADE_CLOCK, locator.toString());
 		}
 		return parent.resolve(containerLocator).find(locator);
 	}
+
+	/**
+	 * Timeout confié au {@code WebElementFacade} : <b>1 ms</b>, et surtout <b>pas {@code 0}</b> (C8).
+	 * Vérifié au bytecode Serenity 4.2.22 : le constructeur applique
+	 * {@code waitForTimeout = (param > 0) ? param : defaultWaitForTimeout()} — un {@code 0} est donc
+	 * interprété comme « non défini » et <b>remplacé par le défaut de 5 s</b>
+	 * ({@code DefaultTimeouts.DEFAULT_WAIT_FOR_TIMEOUT}), ce qui réactivait l'horloge qu'on croyait
+	 * neutraliser. Avec 1 ms, la facade rend la main immédiatement : le {@link #poll} du socle
+	 * redevient la <b>seule</b> horloge. Se propage aux vues {@code within} via {@code find()}
+	 * (la facade fille hérite du timeout du parent).
+	 */
+	private static final long NO_FACADE_CLOCK = 1L;
 
 	/**
 	 * Contexte de recherche de cette instance : le {@code driver} à la racine, sinon l'élément
@@ -334,14 +377,16 @@ public abstract class AbstractSyncManager {
 	 * (ex. prédicats web de {@code WebSync}) sans leur exposer le {@code WebElementFacade} lui-même.
 	 */
 	protected boolean query(By locator, Predicate<WebElementFacade> predicate) {
-		try {
-			return predicate.test(resolve(locator));
-		} catch (RuntimeException failure) {
-			if (SyncCondition.classify(failure).isPresent()) {
-				return false; // élément absent / pas prêt → false : un prédicat ne lève jamais (#2)
+		return withoutImplicitWait(() -> {
+			try {
+				return predicate.test(resolve(locator));
+			} catch (RuntimeException failure) {
+				if (SyncCondition.classify(failure).isPresent()) {
+					return false; // élément absent / pas prêt → false : un prédicat ne lève jamais (#2)
+				}
+				throw failure; // vrai bug (locator invalide…) → remonte
 			}
-			throw failure; // vrai bug (locator invalide…) → remonte
-		}
+		});
 	}
 
 	/**
@@ -455,6 +500,94 @@ public abstract class AbstractSyncManager {
 		// ── Emplacement sentinelle JS (lot 2c) : relecture du drapeau APRÈS l'action ──
 	}
 
+	/**
+	 * Action <b>mutante</b> exécutée sur un {@link WebElement} <b>brut</b> (Selenium natif), et non sur
+	 * le {@code WebElementFacade} — <b>seule</b> façon de garantir C8 (« une seule horloge ») sur ces
+	 * méthodes.
+	 *
+	 * <p><b>Pourquoi le brut ici</b> : vérifié au bytecode Serenity 4.2.22, {@code click}, {@code type},
+	 * {@code typeAndEnter}, {@code typeAndTab}, {@code clear}, {@code doubleClick} et {@code contextClick}
+	 * passent par {@code WithRetries.perform(action, 12)} — <b>12 tentatives espacées de 250 ms</b>,
+	 * déclenchées par {@code InvalidElementStateException}. Ce nombre est une <b>constante compilée</b>
+	 * (aucune clé, aucun réglage) : c'est une <b>seconde horloge</b> impossible à neutraliser autrement
+	 * qu'en ne l'invoquant pas. {@code click} y ajoute {@code waitUntilElementAvailable()}.
+	 *
+	 * <p>Serenity n'apporte ici <b>aucune capacité</b> que Selenium n'ait pas : ses méthodes sont des
+	 * compositions de {@code clear()} / {@code sendKeys()} / {@code Keys} / {@code Actions} appliquées au
+	 * {@code WebElement} obtenu par {@code getElement()}. Le socle reproduit ces compositions à
+	 * l'identique et <b>réémet lui-même</b> le signal de reporting via {@link #notifyScreenChange()} :
+	 * la fonctionnalité est intégralement conservée, seule la seconde horloge disparaît.
+	 *
+	 * <p>Le reste de la surface (lectures, prédicats, {@code select…}, géométrie, attentes) continue de
+	 * passer par le {@code WebElementFacade} : ces méthodes ne portent <b>aucun</b> mécanisme d'attente
+	 * propre (audit bytecode), leur comportement temporel est donc déjà celui du seul {@link #poll}.
+	 */
+	protected void actRaw(By locator, Consumer<WebElement> action) {
+		withoutImplicitWait(() -> poll(locator, resolveTimeout(), resolvePolling(),
+				() -> {
+					WebElement element = resolveElement(locator);
+					requireEnabled(element);
+					action.accept(element);
+					return null;
+				},
+				() -> diagnose(locator)));
+		notifyScreenChange();
+	}
+
+	/**
+	 * Refuse d'agir sur un élément <b>désactivé</b>, en levant une exception <b>classifiable</b>
+	 * ({@link SyncCondition#DISABLED}) que {@link #poll} absorbe : on retente jusqu'au timeout du profil,
+	 * puis on remonte le diagnostic {@code [DISABLED]}.
+	 *
+	 * <p><b>Pourquoi cette garde</b> : le {@code WebElementFacade} vérifiait l'état via
+	 * {@code waitUntilEnabled()} avant de cliquer. Le {@code WebElement} natif, lui, <b>accepte
+	 * silencieusement</b> un clic sur un {@code <button disabled>} — le navigateur n'exécute rien et ne
+	 * lève rien. Sans garde, le socle rendrait donc un <b>faux succès</b> : le test croirait avoir cliqué
+	 * et continuerait sur un écran inchangé, ce qui est plus nuisible qu'un échec franc.
+	 *
+	 * <p>Seul l'état <i>activé</i> est contrôlé ici : les autres empêchements (élément masqué, clic
+	 * intercepté, hors zone) font déjà lever le clic natif, et sont donc classés par le moteur sans
+	 * sonde supplémentaire — d'où un seul appel WebDriver ajouté par tentative.
+	 */
+	private static void requireEnabled(WebElement element) {
+		if (!element.isEnabled()) {
+			throw new InvalidElementStateException("élément présent mais désactivé");
+		}
+	}
+
+	/**
+	 * Résout {@code locator} en {@link WebElement} <b>brut</b> dans le scope courant (le document à la
+	 * racine, le container de la vue {@code within} sinon) — pendant « natif » de {@link #resolve(By)}.
+	 * Re-résolu à <b>chaque</b> tour de {@link #poll} → no-leak conservé (aucun handle mémorisé).
+	 */
+	private WebElement resolveElement(By locator) {
+		return resolveScope(driver()).findElement(locator);
+	}
+
+	/**
+	 * Driver du thread courant, pour les sous-classes qui composent une interaction native
+	 * ({@code Actions} : double-clic, clic droit…). Le driver reste <b>confiné au thread</b> et n'est
+	 * jamais mémorisé — no-leak (D3) préservé, aucun {@code WebElement} n'étant exposé.
+	 */
+	protected WebDriver currentDriver() {
+		return driver();
+	}
+
+	/**
+	 * Signale à Serenity un <b>changement d'écran</b> après une action mutante : c'est ce que fait
+	 * {@code WebElementFacade} en interne, et ce qui permet aux listeners de déclencher une capture
+	 * selon {@code serenity.take.screenshots}. Réémis explicitement puisque le socle n'appelle plus la
+	 * facade pour ces actions. Best-effort : un incident de reporting ne doit jamais faire échouer
+	 * l'action ni le test.
+	 */
+	private static void notifyScreenChange() {
+		try {
+			StepEventBus.getParallelEventBus().notifyScreenChange();
+		} catch (RuntimeException reportingIssue) {
+			// reporting best-effort : l'action a réussi, un souci de rapport ne doit pas la contredire
+		}
+	}
+
 	// ============================================================================================
 	// Recherche imbriquée (no-leak) — retour covariant (WebSync / MobileSync) dans les sous-classes
 	// ============================================================================================
@@ -472,15 +605,27 @@ public abstract class AbstractSyncManager {
 
 	/** Clique/active l'élément cible une fois visible et interactable (WebElement#click). */
 	public void click(By locator) {
-		act(locator, WebElementFacade::click);
+		actRaw(locator, WebElement::click);
 	}
 
 	/** Saisit du texte après avoir vidé le champ (WebElementFacade#type). */
 	public void type(By locator, CharSequence... keysToSend) {
-		fluentWait(locator, element -> {
-			element.type(keysToSend);
-			return null;
+		CharSequence[] keys = nonNullKeys(keysToSend);
+		actRaw(locator, element -> {
+			element.clear();
+			element.sendKeys(keys);
 		});
+	}
+
+	/**
+	 * Écarte les {@code null} du tableau de touches — équivalent du {@code nonNullCharSequenceFrom}
+	 * interne de Serenity, reproduit ici puisque le socle compose lui-même la saisie.
+	 */
+	private static CharSequence[] nonNullKeys(CharSequence... keysToSend) {
+		if (keysToSend == null) {
+			return new CharSequence[0];
+		}
+		return Arrays.stream(keysToSend).filter(Objects::nonNull).toArray(CharSequence[]::new);
 	}
 
 	/**
@@ -491,23 +636,23 @@ public abstract class AbstractSyncManager {
 	 * ({@code TestFailureManager}).
 	 */
 	public void type(By locator, Secret secret) {
-		fluentWait(locator, element -> {
-			element.type(secret.value());
-			return null;
+		actRaw(locator, element -> {
+			element.clear();
+			element.sendKeys(secret.value());
 		});
 	}
 
 	/** Saisit du texte puis presse Entrée (WebElementFacade#typeAndEnter). */
 	public void typeAndEnter(By locator, String value) {
-		act(locator, element -> element.typeAndEnter(value));
+		actRaw(locator, element -> {
+			element.clear();
+			element.sendKeys(value, Keys.ENTER);
+		});
 	}
 
 	/** Vide la valeur de l'élément cible (WebElement#clear). */
 	public void clear(By locator) {
-		fluentWait(locator, element -> {
-			element.clear();
-			return null;
-		});
+		actRaw(locator, WebElement::clear);
 	}
 
 	// ============================================================================================
@@ -581,47 +726,47 @@ public abstract class AbstractSyncManager {
 
 	/** L'élément cible est-il désactivé (WebElementState#isDisabled). */
 	public boolean isDisabled(By locator) {
-		return resolve(locator).isDisabled();
+		return query(locator, WebElementFacade::isDisabled);
 	}
 
 	/** L'élément cible est-il visible, avec attente courte (WebElementState#isVisible). */
 	public boolean isVisible(By locator) {
-		return resolve(locator).isVisible();
+		return query(locator, WebElementFacade::isVisible);
 	}
 
 	/** L'élément cible est-il affiché immédiatement, sans attente (WebElementState#isCurrentlyVisible). */
 	public boolean isCurrentlyVisible(By locator) {
-		return resolve(locator).isCurrentlyVisible();
+		return query(locator, WebElementFacade::isCurrentlyVisible);
 	}
 
 	/** L'élément cible est-il interactable / cliquable (WebElementState#isClickable). */
 	public boolean isClickable(By locator) {
-		return resolve(locator).isClickable();
+		return query(locator, WebElementFacade::isClickable);
 	}
 
 	/** L'élément cible est-il présent dans l'arbre (WebElementState#isPresent). */
 	public boolean isPresent(By locator) {
-		return resolve(locator).isPresent();
+		return query(locator, WebElementFacade::isPresent);
 	}
 
 	/** L'élément cible a-t-il le focus (WebElementState#hasFocus). */
 	public boolean hasFocus(By locator) {
-		return resolve(locator).hasFocus();
+		return query(locator, WebElementFacade::hasFocus);
 	}
 
 	/** L'élément cible contient-il le texte donné (WebElementState#containsText). */
 	public boolean containsText(By locator, String value) {
-		return resolve(locator).containsText(value);
+		return query(locator, element -> element.containsText(value));
 	}
 
 	/** L'élément cible a-t-il exactement ce texte (WebElementState#containsOnlyText). */
 	public boolean containsOnlyText(By locator, String value) {
-		return resolve(locator).containsOnlyText(value);
+		return query(locator, element -> element.containsOnlyText(value));
 	}
 
 	/** L'élément cible contient-il la valeur donnée (WebElementState#containsValue). */
 	public boolean containsValue(By locator, String value) {
-		return resolve(locator).containsValue(value);
+		return query(locator, element -> element.containsValue(value));
 	}
 
 	// ============================================================================================

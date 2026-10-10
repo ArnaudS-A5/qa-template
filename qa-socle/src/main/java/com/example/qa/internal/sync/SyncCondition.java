@@ -1,8 +1,11 @@
 package com.example.qa.internal.sync;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 
+import net.thucydides.core.webdriver.exceptions.ElementShouldBeEnabledException;
+import net.thucydides.core.webdriver.exceptions.ElementShouldBePresentException;
 import org.openqa.selenium.ElementClickInterceptedException;
 import org.openqa.selenium.ElementNotInteractableException;
 import org.openqa.selenium.InvalidElementStateException;
@@ -82,12 +85,44 @@ public enum SyncCondition {
 	}
 
 	/**
+	 * Traduction des exceptions <b>Serenity</b> qui n'héritent pas d'un type Selenium exploitable.
+	 *
+	 * <p>Vérifié au bytecode (Serenity 4.2.22) : {@code ElementShouldBePresentException} et
+	 * {@code ElementShouldBeEnabledException} héritent de {@code org.openqa.selenium.TimeoutException}.
+	 * Sans cette table, {@link #classify} les jugerait <b>non transitoires</b> et le moteur les
+	 * remonterait brutes — sortant de sa propre boucle dès le premier tour, sans retry ni diagnostic
+	 * (cause des écarts {@code T2}/{@code T8} constatés au navigateur).
+	 *
+	 * <p>On mappe <b>ces types précis</b>, et <b>jamais</b> {@code TimeoutException} nu : ce dernier
+	 * couvre tous les timeouts (y compris ceux qu'il faut laisser remonter), l'absorber en bloc
+	 * masquerait de vraies erreurs.
+	 *
+	 * <p>{@code ElementShouldBeVisibleException} est volontairement absente : elle hérite de
+	 * {@code ElementNotInteractableException} et est donc déjà classée {@link #HIDDEN} par héritage.
+	 * Les attentes <b>négatives</b> ({@code ElementShouldBeDisabledException},
+	 * {@code ElementShouldBeInvisibleException}) le sont aussi : elles signalent qu'un état attendu
+	 * n'est pas <i>parti</i>, pas qu'une interaction est bloquée.
+	 */
+	private static final Map<Class<? extends Throwable>, SyncCondition> SERENITY_CONDITIONS = Map.of(
+			ElementShouldBePresentException.class, ABSENT,
+			ElementShouldBeEnabledException.class, DISABLED);
+
+	/**
 	 * Classe une exception réellement levée vers la condition la <b>plus spécifique</b> qui l'englobe
 	 * (ex. un {@code ElementClickInterceptedException} → {@link #INTERCEPTED}, jamais {@link #HIDDEN} ni
 	 * {@link #DISABLED} qui sont ses parents). {@link Optional#empty()} si l'exception n'est pas une
 	 * condition de synchro connue (→ non transitoire, à remonter telle quelle).
+	 *
+	 * <p>Les types <b>Serenity</b> ({@link #SERENITY_CONDITIONS}) sont examinés <b>en premier</b> : ils
+	 * sont plus spécifiques que le type Selenium dont ils héritent, qui ne porterait pas la bonne
+	 * condition (voire aucune).
 	 */
 	public static Optional<SyncCondition> classify(Throwable throwable) {
+		for (Map.Entry<Class<? extends Throwable>, SyncCondition> serenityType : SERENITY_CONDITIONS.entrySet()) {
+			if (serenityType.getKey().isInstance(throwable)) {
+				return Optional.of(serenityType.getValue());
+			}
+		}
 		SyncCondition best = null;
 		for (SyncCondition candidate : values()) {
 			if (candidate.exceptionType.isInstance(throwable)
