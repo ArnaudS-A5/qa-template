@@ -14,6 +14,10 @@ target/site/serenity/
 # Suivi de campagne de maintenance (local, hors target/ pour survivre à mvn clean)
 qa-results-tracking/
 
+# Archives de l'ancien socle : matériel de RÉFÉRENCE LOCAL uniquement (repris pour le domaine DATA).
+# NE DOIT JAMAIS ÊTRE COMMITÉ, sous aucun prétexte — consigne explicite et permanente.
+archives_ancien_socle_not-to-commit-in-any-case/
+
 # IDE — IntelliJ
 .idea/
 *.iml
@@ -26,6 +30,8 @@ qa-results-tracking/
 # Config assistants / outils (Copilot, Claude) — externalisée, hors suivi du socle
 .github/
 .claude/
+AGENTS.md
+agents.md
 
 # IDE — Eclipse
 .project
