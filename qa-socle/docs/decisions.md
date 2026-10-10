@@ -130,6 +130,56 @@ l'implémentation, tous validés en séance :
   `serenity.conf.example` (implicit wait 0…), application du `pageLoadTimeout`, validation bout-en-bout
   au projet `qa-test`.
 
+### Mise à jour (campagne navigateur 2026-08-02) — C8 réellement atteint
+
+La validation au navigateur (`qa-test`, 25 tests) a montré que la ligne ci-dessus — « *une seule horloge
+(C8) : facade délégué à timeout 0* » — **n'était pas vérifiée en production**. Trois mécanismes Serenity,
+invisibles à la lecture de l'API et **non couverts par les tests unitaires** (cf. PA-7), maintenaient une
+seconde horloge sous le `poll` du socle. Corrigé ainsi :
+
+- **Le timeout confié à la facade vaut `1L`, jamais `0`.** Vérifié au bytecode : le constructeur applique
+  `waitForTimeout = (param > 0) ? param : defaultWaitForTimeout()` — un `0` était donc interprété comme
+  « non défini » et **remplacé par le défaut de 5 s**. On croyait neutraliser l'horloge : on l'activait.
+- **Les actions mutantes n'utilisent plus le `WebElementFacade`.** `click`, `type` (×2), `typeAndEnter`,
+  `typeAndTab`, `clear`, `doubleClick`, `contextClick` passent par `WithRetries.perform(..., 12)` —
+  **12 tentatives × 250 ms**, constante **compilée**, sans clé de configuration : une seconde horloge
+  impossible à neutraliser autrement qu'en ne l'invoquant pas. Ces **8 méthodes** agissent donc sur un
+  `WebElement` **brut**, via le point de passage unique **`actRaw`**. Les **52 autres** (lectures,
+  prédicats, `select…`, géométrie, attentes) restent sur la facade : l'audit bytecode établit qu'elles ne
+  portent **aucun** mécanisme d'attente propre — leur comportement temporel est déjà celui du seul `poll`.
+- **L'implicit wait est neutralisé via `ConfigurableTimeouts`**, pas via
+  `driver.manage().timeouts().implicitlyWait(...)` : `WebDriverFacade` maintient son **propre** implicit
+  timeout au-dessus du driver natif, et c'est celui-là que consulte la résolution d'élément. Régler le
+  driver natif laissait la couche Serenity attendre ses 3 s — un prédicat coûtait ~3 s (T14 mesuré à 12 s)
+  et une action **absorbait** l'attente au point de faire réussir un cas qui devait expirer (L4, L5).
+
+**Non-régression de la composition (D3)** : Serenity reste utilisé pour ce qu'il apporte — résolution du
+driver, `@Step`, rapports, `waitUntil*`, toute la surface de confort. Il n'est simplement plus une
+**seconde horloge** sous la boucle. Ses méthodes d'action n'offraient d'ailleurs aucune capacité propre :
+ce sont des compositions de `clear`/`sendKeys`/`Keys`/`Actions` appliquées au `WebElement` obtenu par
+`getElement()`, reproduites à l'identique, avec **réémission explicite** du signal de reporting
+(`StepEventBus…notifyScreenChange()`) — les captures d'écran restent donc produites.
+
+**Garde ajoutée** : le `WebElement` natif **accepte silencieusement** un clic sur un élément désactivé
+(le navigateur n'exécute rien et ne lève rien), là où la facade appelait `waitUntilEnabled()`. Sans
+contrôle, le socle rendrait un **faux succès** — plus nuisible qu'un échec franc. `requireEnabled` lève
+donc une exception **classifiable** (`DISABLED`), absorbée par le polling, produisant `[DISABLED]` au
+timeout. Appliquée **aux 8** actions mutantes (donc plus stricte que Serenity, qui ne vérifiait que
+`click`) : uniformité voulue.
+
+**Classification élargie** : `ElementShouldBePresentException` → `ABSENT`,
+`ElementShouldBeEnabledException` → `DISABLED`. Ces types Serenity héritent de
+`org.openqa.selenium.TimeoutException` et étaient donc jugés **non transitoires** : le moteur les
+remontait brutes et **sortait de sa propre boucle dès le premier tour**, sans retry ni diagnostic.
+`TimeoutException` **nu** n'est délibérément **pas** mappé (trop large : masquerait de vraies erreurs).
+
+**Résultat mesuré** (Chrome, 2026-08-02) : profils respectés (`SHORT` 1069 ms, `MEDIUM` 2123 ms, `MEDIUM`
+réel 14 144 ms), diagnostics `[ABSENT]`/`[DISABLED]` produits, prédicats instantanés (12 124 ms → 25 ms),
+aucune régression sur les artefacts. Détail complet : `plan-remediation.md`.
+
+> ⚠️ Ces quatre constats reposent sur des **comportements internes non contractuels** de Serenity 4.2.22 :
+> à rejouer à chaque bump (cf. **PA-15**).
+
 ## D4 — Abstraction de la synchronisation (web + mobile)
 
 - `AbstractSyncManager` (moteur `fluentWait` + flag JS **et** tout le contrat commun par `By`) →
@@ -459,6 +509,7 @@ Frontière entre le **contrat public** (consommé par les ~17 projets) et l'**in
 | Type | Package | Pourquoi |
 |---|---|---|
 | `WebSync`, `MobileSync` | `api.sync` | types **déclarés** dans les PageObjects consommateurs (`private final WebSync`) |
+| `QaPageObject` | `api.page` | **classe de base des PageObjects consommateurs** (2026-08-03) : étend `PageObject` (Serenity) et expose `web` (profil `MEDIUM`) + `web(SyncTimeout)`. Type **explicitement destiné à l'héritage** par le consommateur — seule exception à « pas d'extension prévue » (cf. ci-dessous) |
 | `DataFileManager` | `api.data` | interface = contrat |
 | `SecretManager` | `api.secret` | interface = contrat |
 | `SecretManagers` | `api.secret` | **factory publique** : seul accès au `SecretManager`, cache `CyberArkApiClient` (idiome JDK `Executors`) |
@@ -508,6 +559,33 @@ par `By`) d'`AbstractSyncManager` (`internal`). Choix retenu (option A, après a
   sous-classe, puis le correctif stable est **promu dans le socle** (changement de corps = non-breaking).
   Le **mode opératoire** (sous-classe nommée + point d'instanciation unique) est documenté dans le
   **Javadoc de `WebSync`/`MobileSync`**, pas ici.
+
+### `QaPageObject` — classe de base publique destinée à l'héritage (2026-08-03)
+
+Ajout d'un domaine **`api.page`** portant un unique type, `QaPageObject`, dont les projets consommateurs
+**héritent** pour leurs Page Objects. Il expose le champ `web` (profil `MEDIUM`) et la méthode
+`web(SyncTimeout)`.
+
+- **Exception assumée à « l'extension n'est pas un cas d'usage de premier plan »** : ici l'héritage **est**
+  le mode d'emploi. Elle ne contredit pas la règle — celle-ci visait les **moteurs** (`Abstract*`), qui
+  restent `internal` et non extensibles.
+- **Aucun héritage perdu** : les Page Objects étendent **déjà** `PageObject` (Serenity) ; on substitue
+  simplement la classe de base. `QaPageObject` en hérite, donc navigation (`open()`, `@DefaultUrl`) et
+  outillage Serenity restent disponibles à l'identique.
+- **Pourquoi un champ `final` est correct** : `WebSync` ne mémorise **aucun** driver (son état se limite au
+  profil et au contexte `within`) ; le driver est résolu **à chaque appel** sur le thread courant. Une page
+  peut donc être construite avant l'ouverture du navigateur — l'initialisation paresseuse défensive
+  observée chez les consommateurs est **inutile**.
+- **Le profil ne se « change » pas** : `web(SyncTimeout.LONG)` renvoie une **instance distincte et
+  immuable**, sans modifier `web`. Pas de mode à réarmer, pas d'effet de bord, et le profil se lit au point
+  d'appel : `web(SyncTimeout.LONG).within(LIGNE).click(DETAIL)`.
+- **Pas de piège de l'oubli (≠ D16)** : sans l'héritage, `web` n'existe pas → **erreur de compilation**.
+  L'omission est bruyante, contrairement à une annotation oubliée qui ne produirait rien en silence.
+- **Limite** : `PageObject` continue d'exposer `$()`/`find()`/`element()`, qui court-circuitent la synchro
+  du socle. La classe rend le bon geste gratuit, elle ne l'impose pas ; la détection relève d'une règle
+  ArchUnit (cf. **PA-17**).
+- **Conséquence contrat** : type **public** → entre dans le périmètre gelé et japicmp (étape 10). Ajout
+  non-breaking, décidé **avant** la 1.0.0 pour ne pas élargir l'API après release.
 
 ### Mise à jour (revue externe 2026-07-07) — mécanique du japicmp « élargi » (C7)
 

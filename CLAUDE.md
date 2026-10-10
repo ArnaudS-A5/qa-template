@@ -46,6 +46,7 @@ Toute la base de code est sous `com.example.qa` et se divise en deux sous-arbres
 | Domaine | Accès public (`api`) | Interne (`internal`) | Activation |
 |---|---|---|---|
 | `sync` | `WebSync`, `MobileSync`, `SwipeDirection`, `SyncTimeout` | `AbstractSyncManager`, `SyncCondition` | Instance créée par le consommateur (`new WebSync()` = profil MEDIUM) |
+| `page` | `QaPageObject` | *(aucun)* | **Héritage** : le PageObject consommateur étend `QaPageObject` et dispose de `web` |
 | `data` | `DataFileManager` (interface), `DataFiles` (factory) | `AbstractDataFileManager`, `ExcelFileReaderWriter`, `CsvFileReaderWriter` | Via factory |
 | `secret` | `SecretManager` (interface), `SecretManagers` (factory), `Secret` | `CyberArkApiClient` | Via factory |
 | `failure` | *(aucun)* | `TestFailureManager`, `RawDomCaptureListener` | **Auto** — ServiceLoader (présence du jar) |
@@ -92,23 +93,35 @@ Branches : `master` (stable, taguée aux releases) → `develop` (intégration) 
 
 Convention de commit : `<type>(<zone>): <résumé impératif court>` avec types `feat|fix|test|refactor|chore|docs|ci`.
 
-## Statut du projet (2026-07-13)
+## Statut du projet (2026-08-03)
 
 - **Étapes 1–6 terminées** : structure, versioning, exceptions, config, stratégie de test, signatures gelées (gel API 2026-06-24).
-- **Étape 7 en cours** : masquage `Secret` + masquage du DOM (`maskPasswordInputs`, champs `type=password`) implémentés et testés unitairement ; reste la validation « zéro clair » bout-en-bout au pilote (D20).
+- **Étape 7 en cours** : masquage `Secret` + masquage du DOM (`maskPasswordInputs`, champs `type=password`) implémentés et testés unitairement ; validation « zéro clair » **confirmée au navigateur** (0 occurrence en clair dans les dumps).
 - **Étape 8 en cours** :
   - **FAILURE** (`TestFailureManager` + `RawDomCaptureListener`) et **infra soft-assert** (`SoftAssertions`/`SoftAssertionExtension`, D22-bis) — faits + testés.
-  - **SYNC web** (2026-07-13, cf. D3 maj) — **fait** : moteur `fluentWait(By,Function)`/`poll` (testé), profils `SyncTimeout`, diagnostic actif `SyncCondition`, 78 méthodes, `within` (deux-temps), `type(By,Secret)`, `should…` via `tryAssert` (testé), noms alignés strictement sur Serenity. **Reste (lot 2c)** : flag JS, neutralisation C8 (`serenity.conf`), `pageLoadTimeout`, tests comportementaux au projet `qa-test`. Gestes `MobileSync` différés (mobile hors périmètre).
-  - **Restent** : `DataFileManager`, `LogbackConfigurator`, ArchUnit, `CyberArkApiClient`, reporting AUTO.
+  - **SYNC web** — **fait et validé au navigateur** (campagne `qa-test` du 2026-08-02) : moteur `poll`, profils `SyncTimeout` **effectivement appliqués**, diagnostic actif `SyncCondition`, 78 méthodes, `within`, `type(By,Secret)`, `should…` via `tryAssert`. **C8 (« une seule horloge ») réellement atteint** : `NO_FACADE_CLOCK = 1L`, les 8 actions mutantes sur `WebElement` brut via `actRaw`, implicit wait neutralisé via `ConfigurableTimeouts`, garde `requireEnabled`, `classify` élargi aux exceptions Serenity. `pageLoadTimeout` appliqué (marqueur lié au driver).
+  - **`QaPageObject`** (`api.page`) : classe de base des PageObjects consommateurs.
+  - **Restent** : sentinelle **flag JS**, `DataFileManager`, `LogbackConfigurator`, ArchUnit, `CyberArkApiClient`, reporting AUTO, gestes `MobileSync`.
 - **Étapes 9–10** : à faire (pilote, japicmp, release 1.0.0).
+- **Suivi des correctifs** : `qa-socle/docs/plan-remediation.md` (plan micro, statuts à jour).
 - **Points de vigilance non couverts par les décisions** : voir `qa-socle/docs/points-attention.md`.
+
+> ⚠️ Le socle s'appuie sur des **comportements internes non contractuels** de Serenity 4.2.22 (défaut de
+> 5 s si timeout ≤ 0, `WithRetries` 12×250 ms compilé en dur, implicit wait propre à `WebDriverFacade`,
+> exceptions héritant de `TimeoutException`). **Rejouer la campagne `qa-test` à chaque bump Serenity** —
+> cf. PA-15.
 
 ### Domaine SYNC — repères d'implémentation
 
 - **Profils de timeout** : `new WebSync(SyncTimeout.LONG)` — jamais de durée en dur dans les PageObjects ; valeurs pilotées par `qa.sync.timeout.<profil>`. Deux étages d'attente : page (`readyState`, `qa.sync.pageLoadTimeout`) vs objet (`fluentWait`).
-- **Prédicats** (`is…`/`contains…`) = état courant, **ne lèvent jamais** (absent → `false`). **`should…`** = assertion **avec attente** branchée sur le soft-assert (`tryAssert`).
+- **Prédicats** (`is…`/`contains…`) = état courant, **ne lèvent jamais** (absent → `false`) et **instantanés** : tous passent par `query()`, enveloppé dans `withoutImplicitWait`. **`should…`** = assertion **avec attente** branchée sur le soft-assert (`tryAssert`).
 - **`within`** = vue bornée immuable, résolution **deux-temps** (no-leak, localise container vs child).
 - **Nommage** : le socle reprend **exactement** le nom Serenity/Selenium appelé (wrapper de synchro).
+- **Deux chemins d'exécution, une seule horloge (C8)** :
+  - **8 actions mutantes** (`click`, `type`×2, `typeAndEnter`, `typeAndTab`, `clear`, `doubleClick`, `contextClick`) → **`actRaw`** sur `WebElement` **brut**. Motif : ces méthodes de la facade passent par `WithRetries` (12×250 ms, **compilé en dur**) = seconde horloge inévitable autrement. Le reporting Serenity est **réémis** (`notifyScreenChange`).
+  - **52 autres** (lectures, prédicats, `select…`, géométrie, attentes) → **`WebElementFacade`**, dont l'audit bytecode montre qu'elles ne portent aucun mécanisme d'attente propre.
+- **Neutralisation de l'implicit wait** : via **`ConfigurableTimeouts`** (API Serenity) — `WebDriverFacade` maintient le sien **au-dessus** du driver natif ; agir sur `manage().timeouts()` seul est **sans effet** sur la résolution d'élément.
+- **`requireEnabled`** : le `WebElement` natif accepte **silencieusement** un clic sur un élément désactivé (faux succès). La garde lève une exception classifiable → `[DISABLED]` au timeout, sur les 8 actions.
 
 Le base package `com.example.qa` et le `groupId` sont des placeholders volontaires à remplacer à l'adoption (refactor IDE « Rename package » + 2 `<groupId>` dans les POM).
 

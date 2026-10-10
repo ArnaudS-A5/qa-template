@@ -44,13 +44,17 @@ qa.sync.timeout.medium    =  15s   # défaut de new WebSync()
 qa.sync.timeout.long      =  60s   # zones lentes (gros modules)
 qa.sync.timeout.extraLong = 120s   # modules très lourds (ex. signature)
 qa.sync.pollingInterval   = 250ms  # pas de polling du fluentWait
-qa.sync.pageLoadTimeout   = 120s   # plafond de chargement de page (readyState) — posé AUTO au 1er contact driver
+qa.sync.pageLoadTimeout   = 120s   # plafond de chargement de page — posé AUTO au 1er contact WebSync avec le driver.
+                                   # NB : une navigation ANTÉRIEURE au 1er appel du socle retombe sur le
+                                   # défaut W3C du navigateur (300 s). Limite assumée, cf. PA-8.
 
-# Neutralisation C8 : le fluentWait du socle = horloge PRINCIPALE. L'implicit wait natif est un filet pour
-# les appels Selenium BRUTS (hors WebSync) ; le socle le neutralise DYNAMIQUEMENT à 0 pendant son propre
-# polling (fluentWait/should), puis le restaure → les deux attentes ne s'additionnent jamais.
+# Neutralisation C8 : le polling du socle = horloge UNIQUE. L'implicit wait natif est un filet pour les
+# appels Selenium BRUTS (hors WebSync) ; le socle le neutralise DYNAMIQUEMENT à 0 pendant son propre
+# polling (actions, prédicats, should…), puis le restaure → les deux attentes ne s'additionnent jamais.
+# La neutralisation passe par l'API Serenity ConfigurableTimeouts : WebDriverFacade maintient son PROPRE
+# implicit timeout au-dessus du driver natif, et c'est celui-là que suit la résolution d'élément.
 serenity.driver.page.load.strategy = normal   # attendre readyState=complete (défaut Serenity)
-webdriver.timeouts.implicitlywait  = 3000      # 3 s : filet des appels bruts ; sans effet sous le fluentWait (toggle)
+webdriver.timeouts.implicitlywait  = 3000      # 3 s : filet des appels bruts ; sans effet sous le polling du socle
 
 # --- Assertions (domaine SYNC, D22) ------------------------------------------
 # false = mode dur (échoue à la 1re assertion). true = soft assert : agrège toutes

@@ -15,9 +15,17 @@
 | PA-4 | ⬜ Ouvert (mineur) | Lecture de la config Serenity à chaque appel |
 | PA-5 | ⬜ Ouvert (mineur) | Table CLAUDE.md/README : activation `log` documentée avant l'implémentation |
 | PA-6 | ⬜ Ouvert (assumé) | Sondes JS (interception, bounds) : best-effort, iframe/shadow DOM non garantis |
-| PA-7 | ⬜ Ouvert | Surface SYNC (78 méthodes) non testable unitairement → validation `qa-test` |
-| PA-8 | ⬜ Ouvert | `pageLoadTimeout` : pas de clé Serenity native → appliqué par le socle (2c), moment à valider |
+| PA-7 | ⬜ Ouvert (confirmé) | Surface SYNC non testable unitairement → validation `qa-test` **— démontré au sens fort (PA-15)** |
+| PA-8 | ⬜ Ouvert (assumé) | `pageLoadTimeout` : 1ʳᵉ navigation non couverte — contrat **(a)** acté, enjeu chiffré 300 s vs 120 s |
 | PA-9 | ⬜ Ouvert | Diagnostic `within` : distinction container/child portée par la `cause` (message actif = `ABSENT` global) |
+| PA-10 | ✅ Clos (2026-08-02) | `pageLoadTimeout` : marqueur désormais lié à **l'identité du driver** — (revue ChatGPT) |
+| PA-11 | ✅ Clos (2026-08-02) | Capture DOM : `ThreadLocal` purgé à l'**ouverture** de chaque test — (revue ChatGPT) |
+| PA-12 | 🔄 Partiel | Actions mutantes : les 8 passent par le point unique `actRaw` ; `submit` reste sur la facade — (revue ChatGPT) |
+| PA-13 | ⬜ Ouvert (mineur) | Validation d'entrées absente (`parseDuration` brut, `null`, durées ≤ 0) — (revue ChatGPT) |
+| PA-14 | ⬜ Ouvert (durcissement) | Horloge/sleeper non injectés (testabilité moteur) — reporté après la campagne — (revue ChatGPT) |
+| PA-15 | ⬜ Ouvert (assumé) | Le socle dépend de **comportements internes Serenity** non contractuels → à rejouer à chaque bump |
+| PA-16 | ⬜ Ouvert (assumé) | Pas de dump `{step}.html` quand l'échec survient **hors `@Step`** |
+| PA-17 | ⬜ Ouvert | `QaPageObject` n'**empêche** pas l'usage de l'API Serenity native, qui court-circuite la synchro |
 
 ---
 
@@ -91,7 +99,7 @@ document principal) couvert ; **edge cases non garantis** : élément dans une *
 pas la frontière — il faut `switchTo().frame` avant, limite commune à toute la surface), **shadow DOM**
 (`elementFromPoint` renvoie le shadow host). Comportement documenté, à valider au navigateur (`qa-test`).
 
-## PA-7 — Surface SYNC (78 méthodes) non testable unitairement 🟠
+## PA-7 — Surface SYNC (78 méthodes) non testable unitairement 🟠 (confirmé au sens fort)
 
 Seuls le cœur pur (`poll`, `parseDuration`, `resolveTimeout`, `tryAssert`, `SyncCondition.classify`) et la
 résolution des profils sont testés **sans navigateur**. Tout le reste (résolution `WebElementFacade`,
@@ -99,13 +107,35 @@ sondes, délégation Serenity, `within`, prédicats, `should…` de bout en bout
 validation comportementale relève du **projet consommateur `qa-test`** (site bidon, navigateur réel,
 ralenti pour observer les timings), conformément à D20. À faire au lot 2c.
 
-## PA-8 — `pageLoadTimeout` : pas de clé Serenity native 🟡
+**Confirmation empirique (2026-08-02)** — le point est plus fort qu'un simple « non testable » : la
+campagne a révélé un défaut que **la suite unitaire ne pouvait pas voir**, et pire, **qu'elle validait à
+tort**. `FluentWaitPollingTest` est vert parce qu'il nourrit `poll` d'exceptions Selenium **brutes**
+simulées ; or en production le moteur reçoit des types **Serenity** et subit l'implicit wait **propre à
+`WebDriverFacade`** (cf. PA-15). Le moteur était donc prouvé **contre un contrat que la production ne
+respecte pas**. Conséquence pratique : aucun objectif de couverture unitaire ne doit être lu comme une
+garantie de conformité du domaine SYNC — seule la campagne navigateur fait foi.
+
+## PA-8 — `pageLoadTimeout` : la 1ʳᵉ navigation n'est pas couverte 🟠 (assumé)
 
 Vérifié au bytecode Serenity 4.2.22 : il existe une clé de **stratégie** (`serenity.driver.page.load.strategy`,
 `normal` = attendre `readyState=complete`) mais **aucune clé de *timeout* de page load**. Le plafond
-`qa.sync.pageLoadTimeout` (2 min) devra donc être **appliqué par le socle** via
-`driver.manage().timeouts().pageLoadTimeout(...)` (lot 2c) — le **moment** d'application (premier accès
-driver du thread ?) est à trancher/valider, le socle ne gérant pas le cycle de vie du driver (Serenity).
+`qa.sync.pageLoadTimeout` (2 min) est donc **appliqué par le socle** via
+`driver.manage().timeouts().pageLoadTimeout(...)`, au **1ᵉʳ contact `WebSync`** avec le driver.
+
+**Contrat acté (2026-08-02, option (a))** : sont protégées les navigations **postérieures** au premier
+appel au socle. Une navigation qui le **précède** — typiquement le `openUrl` d'ouverture d'un test —
+retombe sur le **défaut W3C du navigateur, 300 s**. L'enjeu réel se chiffre donc à **300 s au lieu de
+120 s**, sur cette seule navigation, dans le cas rare d'une page qui pend : jamais un blocage infini.
+
+Options écartées, pour mémoire : **(b)** protéger toute navigation supposerait de prendre la main sur la
+**fabrique de driver** Serenity (le driver est créé paresseusement, aucun hook exploitable) ou de forcer
+sa création à chaque test (effet de bord inacceptable) ; **(c)** un `WebSync.openUrl()` maison ne
+protégerait que si le consommateur y pense — exactement le **mécanisme opt-in que D16 rejette**, en plus
+de faire doublon avec `PageObject.openUrl()`.
+
+C'est cette limite qui explique l'échec de **T6** côté `qa-test` : le test navigue sans avoir sollicité le
+socle, il ne démontre donc aucun défaut. Le correctif est côté test (provoquer un contact `WebSync` avant
+la navigation).
 
 ## PA-9 — Diagnostic `within` : distinction container/child portée par la `cause` 🟡
 
@@ -114,3 +144,127 @@ Retenu en séance (« niveau actuel suffit ») : la résolution **deux-temps** f
 (`SyncCondition`) ajoute `ABSENT` sans étiquette « container » / « child ». Suffisant pour le débogage via
 la cause ; un raffinement (`[ABSENT:container]`) reste possible sans changement d'architecture si le besoin
 émerge au pilote.
+
+## PA-10 — `pageLoadTimeout` : marqueur porté par l'instance, pas par le driver ✅ (clos 2026-08-02)
+
+Relevé par la **revue externe ChatGPT** (complète PA-8, qui ne portait que sur le *moment* d'application).
+Le plafond est posé dans `AbstractSyncManager.driver()` au 1ᵉʳ contact, sous garde du champ
+`pageLoadTimeoutApplied` — **porté par l'instance**, alors que le Javadoc annonce une pose « **une seule
+fois sur le driver** ». La portée réelle (par instance) **ne correspond donc pas** à la portée documentée
+(par driver) :
+
+- plusieurs instances (`WebSync`, vues `within`) partageant le driver du thread **ré-appliquent** chacune
+  le plafond (redondant, sans dommage, mais pas « une seule fois ») ;
+- une instance **réutilisée avec un nouveau driver** (driver recréé en cours de session) **ne l'applique
+  pas** au nouveau driver (marqueur déjà à `true`).
+
+Distinct du « la 1ᵉʳᵉ navigation n'est pas protégée » (timing, PA-8/T6).
+
+**Corrigé le 2026-08-02** : le champ `boolean pageLoadTimeoutApplied` est remplacé par
+`WebDriver pageLoadTimeoutAppliedTo`, qui retient **l'identité du driver** traité. Tout changement de
+driver (recréation en cours de session) déclenche donc une **nouvelle pose** du plafond. Reste
+thread-confiné, non `static` (D19). Le point d'application, lui, relève de PA-8 et a été tranché
+séparément (option (a)).
+
+## PA-11 — Capture DOM : `ThreadLocal` non purgé si non consommé ✅ (clos 2026-08-02)
+
+Relevé par la **revue externe ChatGPT**. `RawDomCaptureListener` mémorise le DOM brut dans un
+`ThreadLocal<String>` au `stepFailed` ; `TestFailureManager#consumeCapturedDom()` le lit **et le purge**
+dans `executionFinished`. La purge n'intervient **qu'à la consommation**. Si le DOM capté n'est **jamais
+consommé** — artefacts désactivés (`qa.failure.artefacts.enabled=false`), test non `FAILED`, step KO puis
+**rattrapée**, `TestOutcome` indisponible, écriture court-circuitée avant consommation — la valeur **reste**
+attachée au worker. Un worker de pool **réutilisé** pour un test ultérieur pourrait alors exposer un **DOM
+périmé**. Le chemin nominal est prouvé (parallèle OK, D22-bis) ; c'est **l'edge « non consommé »** qui n'est
+pas couvert. Même famille que **PA-1** (fuite `ThreadLocal`), porteur différent.
+
+**Corrigé le 2026-08-02** : `RawDomCaptureListener` purge le porteur à l'**ouverture** de chaque test —
+les **trois** surcharges de `testStarted` (Serenity peut appeler l'une ou l'autre) et `testRetried`.
+Choix d'implémentation important : la purge n'a **pas** lieu en fin de test, car `TestFailureManager`
+consomme dans `executionFinished` (listener **JUnit Platform**) tandis que `testFinished` est émis par le
+bus **Serenity** — l'ordre entre les deux n'étant pas contractuel, purger là risquerait d'effacer le DOM
+**avant** son écriture. Couvert par `RawDomCaptureLifecycleTest` (5 cas), via un point d'entrée
+package-private `rememberForTests` (le chemin réel exige un driver vivant).
+
+## PA-12 — Actions mutantes : toutes ne passent pas par `act()` 🔄 (partiellement traité)
+
+Relevé par la **revue externe ChatGPT**. `act()` **réserve** le point d'injection de la future sentinelle
+JS de re-render (lot 2c). Aujourd'hui, **`click`** et **`typeAndEnter`** y passent, mais **`type`**,
+**`type(By, Secret)`**, **`clear`** et plusieurs sélections/actions spécifiques de `WebSync` appellent
+`fluentWait` **directement**. Quand la sentinelle sera câblée, elle ne couvrira donc **qu'une partie** des
+opérations susceptibles de déclencher un re-render. La notion d'**« action mutante »** n'est définie nulle
+part. **Pistes** : définir explicitement ce qu'est une action mutante ; faire passer **toutes** les
+mutations par le point unique `act()` ; séparer proprement lectures / prédicats / mutations ; tester qu'une
+mutation re-rendant le DOM attend bien le **nouvel état cible**.
+
+**Avancement (2026-08-02)** : la reprise C8 a créé un **point de passage unique** — `actRaw` — par lequel
+transitent désormais les **8 actions mutantes** (`click`, `type`×2, `typeAndEnter`, `typeAndTab`,
+`clear`, `doubleClick`, `contextClick`). La sentinelle s'y branchera donc **une seule fois** et couvrira
+tout le groupe. **Reste** : `submit` (spécifique web) passe encore par `act()`/facade, n'ayant pas de
+mécanisme parasite à contourner — à basculer si l'on veut que la règle « aucune mutation hors `actRaw` »
+soit absolue. Le mécanisme de sentinelle lui-même est décrit en **C.7** du plan de remédiation.
+
+## PA-13 — Validation d'entrées absente 🟡 (mineur)
+
+Relevé par la **revue externe ChatGPT**. Aucune garde explicite sur les invariants : `SyncTimeout`,
+`locator`, action, prédicat, `parent`/`container` non `null` ; durées strictement positives ; pas de
+polling nul ou négatif. `parseDuration()` propage une **`NumberFormatException` brute** et accepte
+techniquement des valeurs `null`, nulles au sens temporel ou négatives selon le chemin d'appel. **Piste** :
+valider à la frontière et traduire une config invalide en **exception métier lisible**
+(`SyncException`/`QaToolkitException`, D18) plutôt que de laisser fuiter `NumberFormatException`. Mineur,
+mais peu coûteux et bon pour le diagnostic.
+
+## PA-15 — Dépendance à des comportements internes Serenity non contractuels 🟠 (assumé)
+
+La reprise C8 (2026-08-02) s'appuie sur des constats obtenus **par lecture du bytecode** de
+serenity-core 4.2.22, pas sur des garanties d'API :
+
+- `WebElementFacadeImpl` remplace un `waitForTimeout` ≤ 0 par un **défaut de 5 s**
+  (`DefaultTimeouts.DEFAULT_WAIT_FOR_TIMEOUT`) → d'où `NO_FACADE_CLOCK = 1L` et **non** `0` ;
+- `click`/`type`/`clear`/`typeAndEnter`/`typeAndTab`/`doubleClick`/`contextClick` passent par
+  `WithRetries.perform(..., 12)` — **12 tentatives × 250 ms**, nombre **compilé en dur**, aucune clé ;
+- `WebDriverFacade` maintient un implicit timeout **distinct** du driver natif, exposé via
+  `ConfigurableTimeouts` — c'est lui qui gouverne la résolution d'élément ;
+- les exceptions Serenity (`ElementShouldBePresent/Enabled…`) héritent de `TimeoutException`, ce qui les
+  rendait invisibles à `classify`.
+
+Ces quatre points sont **exacts pour 4.2.22** et rien ne garantit leur stabilité. **Action attendue à
+chaque bump `serenity.version`** : rejouer la campagne `qa-test` (bornes L1–L6 + diagnostic T2/T7/T8/T9)
+**avant** publication — c'est le seul filet. Même exigence que PA-3 (bump JUnit) et C2/C11.
+
+## PA-16 — Pas de dump `{step}.html` si l'échec survient hors `@Step` 🟡 (assumé)
+
+`RawDomCaptureListener` est un `StepListener` : il ne capte le DOM que sur **`stepFailed`**, événement
+émis uniquement si l'échec se produit **dans une step** (méthode `@Step` d'une classe `@Steps`). Un test
+qui appelle `WebSync` **directement depuis la méthode `@Test`** ne produit donc aucun `stepFailed` → le
+dossier `KO__` contient `ERROR.log` et `FAIL.log`, mais **pas** de `.html`. Le repli « option C » (source
+Serenity) ne s'applique pas davantage : le nom du fichier est celui de la **step fautive**, inexistante ici.
+
+**Conforme au contrat** (D8 : « dump HTML *de la step en erreur* ») et **sans impact consommateur** : les
+17 projets écrivent des PageObjects avec `@Step`. Le cas ne concerne en pratique que les **tests de socle**
+(`qa-test` phase 1), qui exercent `WebSync` à nu. Élargir la capture (capter aussi dans
+`TestFailureManager`, nommer d'après le test) **modifierait le contrat de sortie versionné** — breaking
+change SemVer pour un bénéfice limité aux tests internes : écarté.
+
+## PA-17 — `QaPageObject` facilite mais n'impose pas l'usage de `WebSync` 🟡
+
+`QaPageObject` (2026-08-03) fournit `web` à toute page consommatrice sans déclaration. Mais comme elle
+étend `PageObject` (Serenity), elle continue d'exposer `$()`, `find()`, `element()` — qui
+**court-circuitent intégralement** la synchro du socle : ni profils `SyncTimeout`, ni diagnostic, ni
+no-leak, ni capture DOM. Un projet peut donc, par habitude, écrire du code qui contourne le socle sans
+s'en apercevoir (cas déjà observé sur les PageObjects PHASE 2 de `qa-test`, depuis migrés).
+
+Ne pas hériter de `PageObject` reviendrait à perdre la navigation (`open()`, `@DefaultUrl`) et tout
+l'outillage Serenity : disproportionné. **Piste retenue** : une **règle ArchUnit** livrée par le socle
+(« aucun PageObject n'appelle `$`/`find`/`element` »), activable par les consommateurs — cf. F.11. La
+classe rend le bon geste gratuit, la règle rend le mauvais geste visible.
+
+## PA-14 — Horloge / sleeper non injectés (testabilité moteur) 🟡 (durcissement)
+
+Relevé par la **revue externe ChatGPT**. `poll` et `tryAssert` utilisent directement `System.nanoTime()`
+et `Thread.sleep()` → les **tests unitaires du socle dorment réellement** et ne peuvent affirmer ni le
+**nombre exact de tentatives** ni le **respect précis de la deadline**. Injecter deux petites abstractions
+**internes** (`Clock`/`Sleeper`, `internal.sync`, impls réelles par défaut, doublures en test) rendrait les
+tests **instantanés et déterministes** (tentatives, deadline, interruption simulée). **Portée** :
+**interne au socle, niveau moteur** (`AbstractSyncManager`) — **zéro impact** API/consommateur, sans rapport
+avec `qa-test`. **À faire avec la reprise C8** (on touchera `poll`/`tryAssert` de toute façon, et on voudra
+des tests rapides pour **prouver** l'horloge unique) — pas en item isolé.

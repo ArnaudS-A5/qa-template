@@ -241,11 +241,11 @@ sont déjà masquées) et masque les champs password du DOM capté avant écritu
 **Objectif** : remplacer chaque squelette typé par sa logique, avec de vrais tests comportementaux
 (selon la stratégie de l'étape 5) qui remplacent les tests de hiérarchie triviaux actuels.
 
-**Statut : 🟡 En cours** — *première étape AVEC implémentation, **démarrée*** : le composant **FAILURE**
-(`TestFailureManager` + capture du DOM brut `RawDomCaptureListener`) et l'**infrastructure soft-assert**
-(D22-bis) sont implémentés et testés. Restent `WebSync` (dont le branchement des `should…` sur le
-soft-assert), `DataFileManager`, `LogbackConfigurator`, les garde-fous ArchUnit, `CyberArkApiClient`
-et le reporting AUTO.
+**Statut : 🟡 En cours** — **FAILURE** (`TestFailureManager` + `RawDomCaptureListener`), l'**infrastructure
+soft-assert** (D22-bis) et le domaine **SYNC web** sont implémentés, testés **et validés au navigateur**
+(campagne `qa-test` du 2026-08-02 : les 6 défauts constatés sont corrigés, aucune régression). S'y ajoute
+`QaPageObject` (ergonomie consommateur). Restent `DataFileManager`, `LogbackConfigurator`, les garde-fous
+ArchUnit, `CyberArkApiClient`, le reporting AUTO, la sentinelle JS et les gestes `MobileSync`.
 
 - [x] **SYNC web** (2026-07-13, cf. D3 maj) : moteur `fluentWait(By, Function)` + `poll` pur (testé),
       profils `SyncTimeout` (`SHORT/MEDIUM/LONG/EXTRA_LONG`, clés `qa.sync.timeout.*`), **diagnostic actif**
@@ -253,10 +253,23 @@ et le reporting AUTO.
       multi-codes), **toute la surface** (78 méthodes) + `within` (deux-temps, no-leak), `type(By, Secret)`,
       les **`should…` branchés sur le soft-assert** via `tryAssert` (testé). Noms alignés strictement sur
       Serenity (6 renommages). *Une seule horloge (C8)* : facade délégué à timeout 0.
-  - [ ] **Reste SYNC (lot 2c)** : injection du **flag JS** de re-render ; neutralisation C8 dans
-        `serenity.conf.example` (implicit wait 0…) ; application du `pageLoadTimeout` ; **tests
-        comportementaux au projet `qa-test`** (site bidon, navigateur réel) — la surface web n'est pas
-        testable unitairement dans le socle. *Gestes `MobileSync` : différés (mobile hors périmètre).*
+  - [x] **Lot 2c — C8 réellement atteint** (2026-08-02, cf. D3 maj « campagne navigateur ») : la
+        neutralisation « facade à timeout 0 » ne fonctionnait **pas** en production. Trois correctifs :
+        `1L` (et non `0`, réinterprété en 5 s par Serenity) ; les **8 actions mutantes** agissent sur
+        `WebElement` **brut** via le point unique `actRaw` (contournement de `WithRetries`, 12×250 ms
+        compilés en dur) ; implicit wait neutralisé via **`ConfigurableTimeouts`** (Serenity maintient le
+        sien au-dessus du driver natif). Plus : garde `requireEnabled` (le clic natif sur un élément
+        désactivé ne lève pas → faux succès) et `classify` élargi aux exceptions Serenity.
+        **Validé au navigateur** : profils respectés, `[ABSENT]`/`[DISABLED]` produits, prédicats
+        instantanés (12 124 ms → 25 ms), zéro régression.
+  - [x] **`pageLoadTimeout`** appliqué (marqueur lié à **l'identité du driver**, PA-10) ; 1ʳᵉ navigation
+        non couverte — limite **assumée et chiffrée** (300 s W3C vs 120 s), cf. PA-8.
+  - [ ] **Reste SYNC** : injection du **flag JS** de re-render (mécanisme de référence compris : drapeau
+        `window.__f` + hook réseau `__activeCalls` détectant l'async malgré `readyState=complete` ; non
+        systématique). *Gestes `MobileSync` : différés (mobile hors périmètre).*
+- [x] **`QaPageObject`** (2026-08-03, `api.page`) : classe de base des Page Objects consommateurs
+      exposant `web` + `web(SyncTimeout)` — supprime le *boilerplate* par page, oubli impossible en
+      silence (erreur de compilation). Élargit l'API publique → périmètre japicmp (étape 10).
 - [ ] `DataFileManager` (Excel/CSV) + tests.
 - [x] `TestFailureManager` (depuis le `TestOutcome` Serenity) + tests — **fait** : artefacts `KO__`
       (`ERROR.log`/`FAIL.log`/dump HTML), feuille KO, `sanitize` (accents translittérés), **capture du DOM

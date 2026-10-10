@@ -7,9 +7,12 @@ consommé **comme dépendance Maven** par les ~17 projets de tests de l'équipe
 > **Statut : API gelée (2026-06-24), implémentation en cours (étape 8).** Sont implémentés et testés : le
 > **masquage `Secret`** + DOM, la **capture d'échec** (`TestFailureManager` + DOM brut), l'**infra
 > soft-assert** (D22-bis) et tout le **domaine SYNC web** (moteur `fluentWait`, 78 méthodes, profils
-> `SyncTimeout`, diagnostic actif, `within`, `should…`/soft-assert — noms alignés sur Serenity). Restent :
-> `DataFileManager`, `LogbackConfigurator`, `CyberArkApiClient`, reporting AUTO, et le lot SYNC 2c (flag JS,
-> neutralisation C8, `pageLoadTimeout`, tests navigateur au projet `qa-test`). Gestes mobiles différés.
+> `SyncTimeout`, diagnostic actif, `within`, `should…`/soft-assert — noms alignés sur Serenity), plus
+> **`QaPageObject`** (classe de base des Page Objects consommateurs). Le domaine SYNC est **validé au
+> navigateur** (campagne `qa-test` du 2026-08-02, Chrome) : profils effectivement appliqués, diagnostics
+> `[ABSENT]`/`[DISABLED]` produits, prédicats instantanés, `pageLoadTimeout` posé. Restent :
+> `DataFileManager`, `LogbackConfigurator`, `CyberArkApiClient`, reporting AUTO, la **sentinelle flag JS**
+> et les garde-fous ArchUnit. Gestes mobiles différés.
 
 ## Sommaire
 
@@ -80,7 +83,8 @@ délégation à l'opération native Selenium/Serenity quand l'élément est rée
 
 | Domaine | `api` (public) | `internal` (caché) | Rôle |
 |---|---|---|---|
-| `sync` | `WebSync`, `MobileSync`, `SwipeDirection`, `SyncTimeout` | `AbstractSyncManager`, `SyncCondition` | synchronisation robuste (`fluentWait`, profils de timeout, diagnostic actif) — **web implémenté** |
+| `sync` | `WebSync`, `MobileSync`, `SwipeDirection`, `SyncTimeout` | `AbstractSyncManager`, `SyncCondition` | synchronisation robuste (`fluentWait`, profils de timeout, diagnostic actif) — **web implémenté et validé au navigateur** |
+| `page` | `QaPageObject` | *(aucun)* | classe de base des Page Objects consommateurs : expose `web` (profil `MEDIUM`) et `web(SyncTimeout)` — **héritage**, aucune déclaration à écrire |
 | `data` | `DataFileManager` | `AbstractDataFileManager`, `ExcelFileReaderWriter`, `CsvFileReaderWriter` | données de test Excel/CSV (lecture + écriture) |
 | `log` | *(aucun type public — log d'action via SLF4J natif)* | `LogbackConfigurator` *(coquille existante ; resources à venir — D16-bis)* | default Logback (namespace `"qa"`, clé `qa.logger.level`) imposé par la présence du jar, surchargeable ; **pas de façade maison** |
 | `failure` | *(aucun type public — activation native par présence du jar)* | `TestFailureManager`, `RawDomCaptureListener` | artefacts d'échec (`ERROR.log`/`FAIL.log` + dump du **DOM brut**, champs password masqués) — **implémenté** |
