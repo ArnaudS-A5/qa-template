@@ -1,5 +1,6 @@
 package com.example.qa.internal.failure;
 
+import java.time.ZonedDateTime;
 import java.util.Optional;
 
 import net.thucydides.core.webdriver.ThucydidesWebDriverSupport;
@@ -43,6 +44,61 @@ public class RawDomCaptureListener extends StepListenerAdapter {
     @Override
     public void stepFailed(StepFailure failure) {
         capturePageSource();
+    }
+
+    // ============================================================================================
+    // Hygiène du ThreadLocal : repartir d'une ardoise vierge à CHAQUE test (PA-11)
+    // ============================================================================================
+
+    @Override
+    public void testStarted(String description) {
+        discardStaleCapture();
+    }
+
+    @Override
+    public void testStarted(String description, String id) {
+        discardStaleCapture();
+    }
+
+    @Override
+    public void testStarted(String description, String id, ZonedDateTime startTime) {
+        discardStaleCapture();
+    }
+
+    @Override
+    public void testRetried() {
+        discardStaleCapture();
+    }
+
+    /**
+     * Écarte une capture qui n'aurait <b>pas été consommée</b> par le test précédent, afin qu'un test ne
+     * puisse jamais hériter du DOM d'un autre.
+     *
+     * <p><b>Pourquoi c'est nécessaire</b> : {@link #consumeCapturedDom()} purge, mais il n'est appelé que
+     * lorsque des artefacts sont réellement écrits. Une capture reste donc orpheline si les artefacts sont
+     * désactivés ({@code qa.failure.artefacts.enabled=false}), si le test ne finit pas en {@code FAILED}
+     * (step en échec puis rattrapée), si aucun {@code TestOutcome} n'est disponible, ou si l'écriture est
+     * court-circuitée. Les threads workers étant <b>réutilisés</b>, le test suivant exécuté sur le même
+     * thread se verrait alors attribuer un DOM périmé — un artefact faux, et trompeur au diagnostic.
+     *
+     * <p><b>Pourquoi au démarrage et non en fin de test</b> : {@link TestFailureManager} consomme la valeur
+     * dans {@code executionFinished} (listener <b>JUnit Platform</b>), alors que {@code testFinished} est
+     * émis par le bus <b>Serenity</b> ; l'ordre entre les deux n'est pas contractuel. Purger en fin de test
+     * risquerait d'effacer le DOM <b>avant</b> son écriture. Purger à l'ouverture atteint le même but sans
+     * jamais entrer en concurrence avec la consommation.
+     */
+    private static void discardStaleCapture() {
+        CAPTURED_DOM.remove();
+    }
+
+    /**
+     * Dépose une capture <b>sans driver</b> — réservé aux tests du socle (visibilité <b>package</b>, donc
+     * hors de portée du consommateur). Le chemin réel ({@link #stepFailed}) exige un WebDriver vivant :
+     * sans ce point d'entrée, l'hygiène du {@link ThreadLocal} (PA-11) ne serait vérifiable qu'au
+     * navigateur, alors que c'est précisément la partie qui se teste sans lui.
+     */
+    static void rememberForTests(String dom) {
+        CAPTURED_DOM.set(dom);
     }
 
     /** Capte le DOM brut si un driver est instancié ; silencieux en cas d'indisponibilité. */
