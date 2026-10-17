@@ -26,6 +26,8 @@
 | PA-15 | ⬜ Ouvert (assumé) | Le socle dépend de **comportements internes Serenity** non contractuels → à rejouer à chaque bump |
 | PA-16 | ⬜ Ouvert (assumé) | Pas de dump `{step}.html` quand l'échec survient **hors `@Step`** |
 | PA-17 | ⬜ Ouvert | `QaPageObject` n'**empêche** pas l'usage de l'API Serenity native, qui court-circuite la synchro |
+| PA-18 | ⬜ Ouvert (assumé) | Le package-private protège le **compilateur**, pas le runtime : split package et réflexion le contournent |
+| PA-19 | ⬜ Ouvert (à arbitrer) | Bris de glace amoindri : sans accès au moteur, et la vue `within` n'est pas du type de la sous-classe |
 
 ---
 
@@ -80,7 +82,7 @@ test automatisé via `EngineTestKit` (JUnit Platform Test Kit) plutôt qu'en tes
 `SoftAssertions.check()` (via `isSoftEnabled()`) et `TestFailureManager` recréent
 `SystemEnvironmentVariables.createEnvironmentVariables()` à **chaque** lecture de clé. Négligeable pour
 `TestFailureManager` (chemin d'échec uniquement), mais `check()` sera appelé par **tous les `should…`**
-en fonctionnement nominal. Optimisation interne libre (types `internal`) : à mesurer au pilote avant
+en fonctionnement nominal. Optimisation interne libre (types package-private) : à mesurer au pilote avant
 d'optimiser (pas de cache prématuré — la clé doit rester surchargeable par `-D` au run).
 
 ## PA-5 — Activation `log` documentée avant l'implémentation 🟡 (mineur)
@@ -258,12 +260,55 @@ l'outillage Serenity : disproportionné. **Piste retenue** : une **règle ArchUn
 (« aucun PageObject n'appelle `$`/`find`/`element` »), activable par les consommateurs — cf. F.11. La
 classe rend le bon geste gratuit, la règle rend le mauvais geste visible.
 
+## PA-18 — Le package-private protège le compilateur, pas le runtime 🟡 (assumé)
+
+Depuis la réorganisation par fonctionnalité (2026-10-17, D15), les implémentations et le moteur sont
+**package-private** : un consommateur qui écrit `import com.example.qa.secret.CyberArkApiClient` obtient une
+**erreur de compilation** (« is not public … cannot be accessed from outside package »), de même que
+`new SyncException(…)` ou un appel à `fluentWait` depuis une sous-classe. Vérifié le 2026-10-17 sur une
+classe compilée dans un package tiers.
+
+La protection est cependant celle du **compilateur**, pas de la JVM. Deux contournements existent, tous deux
+**délibérés** (jamais par autocomplétion ou import automatique) :
+
+- déclarer **dans le projet consommateur** une classe du même package (`package com.example.qa.sync;`) :
+  les deux se retrouvent dans un *split package* sur le classpath et la visibilité package s'applique ;
+- la **réflexion** (`setAccessible(true)`).
+
+Compromis **acté** : l'objectif — empêcher l'usage **involontaire** d'une implémentation et forcer le
+passage par la façade — est atteint. **Durcissements possibles, non décidés** : (a) jar scellé
+(`Sealed: true` dans le manifeste, la JVM refuse alors de charger une autre classe du même package depuis
+un autre emplacement) — à tester contre l'exécution des tests du socle et le *shading* éventuel ; (b) règle
+ArchUnit livrée aux consommateurs : « aucune classe du projet ne se trouve dans un package `com.example.qa.*` »,
+qui rend le contournement **visible**. À réévaluer si un projet est observé en train de contourner.
+
+## PA-19 — Bris de glace amoindri : pas d'accès au moteur, `within` non propagé 🟠 (à arbitrer)
+
+L'échappatoire « bris de glace » (D15) consiste à **sous-classer** `WebSync`/`MobileSync` et à **surcharger**
+la méthode publique fautive. Le moteur étant devenu package-private (arbitrage du 2026-10-17 : plus aucun
+membre `protected`), deux limites en découlent :
+
+1. la sous-classe **ne peut plus réutiliser le moteur** (`fluentWait`, `actRaw`, `tryAssert`…) : elle ne
+   dispose que de `super.xxx()` et des autres méthodes **publiques** ;
+2. **`within(By)` renvoie une instance de base** (`new WebSync(this, container)`) : la surcharge n'est donc
+   **pas propagée** aux vues bornées. Avant la réorganisation, une sous-classe pouvait surcharger `within`
+   et construire sa propre vue via le constructeur `protected`, dont le paramètre était un type nommable ;
+   ce constructeur est maintenant package-private.
+
+Seule la première limite est assumée (le bris de glace corrige un comportement en attendant la promotion
+du correctif dans le socle ; il n'a pas vocation à étendre le moteur). La seconde est **un vrai trou** : un
+correctif de bris de glace sur `click` ne s'appliquerait pas à `web.within(LIGNE).click(…)`.
+**Pistes (à arbitrer, aucune retenue)** : exposer un constructeur `protected WebSync(WebSync parent, By container)`
+(type public, donc nommable) ; ou faire de la création de la vue une méthode `protected` surchargeable ; ou
+documenter que le bris de glace ne couvre pas `within`. Le Javadoc de `WebSync`/`MobileSync` mentionne
+la limite en attendant.
+
 ## PA-14 — Horloge / sleeper non injectés (testabilité moteur) 🟡 (durcissement)
 
 Relevé par la **revue externe ChatGPT**. `poll` et `tryAssert` utilisent directement `System.nanoTime()`
 et `Thread.sleep()` → les **tests unitaires du socle dorment réellement** et ne peuvent affirmer ni le
 **nombre exact de tentatives** ni le **respect précis de la deadline**. Injecter deux petites abstractions
-**internes** (`Clock`/`Sleeper`, `internal.sync`, impls réelles par défaut, doublures en test) rendrait les
+**internes** (`Clock`/`Sleeper`, package-private dans `sync`, impls réelles par défaut, doublures en test) rendrait les
 tests **instantanés et déterministes** (tentatives, deadline, interruption simulée). **Portée** :
 **interne au socle, niveau moteur** (`AbstractSyncManager`) — **zéro impact** API/consommateur, sans rapport
 avec `qa-test`. **À faire avec la reprise C8** (on touchera `poll`/`tryAssert` de toute façon, et on voudra

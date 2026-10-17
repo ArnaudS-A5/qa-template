@@ -1,6 +1,7 @@
 # Spécifications Fonctionnelles Détaillées (SFD) — Socle QA
 
-> **Statut du document** : version de référence pour la phase de conception (coquilles typées).
+> **Statut du document** : version de référence du contrat fonctionnel (conçu sur coquilles typées ;
+> implémentation en cours, étape 8).
 > Décrit les **besoins fonctionnels** du socle tels qu'arrêtés par les décisions d'architecture
 > ([decisions.md](decisions.md)) et séquencés par la [roadmap](roadmap.md). Sert de contrat
 > fonctionnel pour l'implémentation (étape 8).
@@ -34,7 +35,7 @@ capture d'échec, journalisation, gestion d'erreurs, configuration, gouvernance 
 
 | Acteur | Rôle vis-à-vis du socle |
 |---|---|
-| **Auteur de test QA** | Écrit les PageObjects/tests ; utilise `WebSync`/`MobileSync`, `DataFiles`, `SecretManager`, `ReportingManager`. |
+| **Auteur de test QA** | Écrit les PageObjects/tests ; hérite de `QaPageObject` ; utilise `WebSync`/`MobileSync`, `DataFiles`, `SecretManagers`/`SecretManager`. Le reporting est automatique : aucun type reporting à manipuler. |
 | **Projet consommateur** (×17) | Hérite du Parent POM, dépend du jar `qa-socle` ; fournit sa configuration (`serenity.conf`). |
 | **Agent `qa-maintenance`** | Consomme les artefacts d'échec `KO__…` pour la classification et l'auto-correction (D9). |
 | **CI / Jenkins** (autre équipe) | Exécute les builds, récupère les artefacts, joue la non-régression (D7). |
@@ -62,14 +63,19 @@ capture d'échec, journalisation, gestion d'erreurs, configuration, gouvernance 
 
 ### 2.1 Architecture fonctionnelle
 
-Deux sous-arbres de visibilité (D15) :
+Un package par fonctionnalité sous `com.example.qa` (D15), la frontière public / interne étant portée par
+les **modificateurs Java** :
 
-- `com.example.qa.api.<domaine>` — **contrat public** consommé par les 17 projets (interfaces, types
-  valeur, façades, exceptions).
-- `com.example.qa.internal.<domaine>` — **implémentations et moteurs**, non destinés à l'extension.
+- **types `public`** — **contrat** consommé par les 17 projets (interfaces, types valeur, façades,
+  factories, exceptions, classe de base `QaPageObject`) ;
+- **types package-private** — **implémentations et moteurs**, non destinés à l'extension : le
+  compilateur interdit au consommateur de les référencer ;
+- **classes `public final` chargées par ServiceLoader** (listeners, extension Jupiter, `Configurator`
+  Logback) — publiques par obligation technique, jamais référencées par le consommateur.
 
-Domaines fonctionnels : `sync`, `data`, `secret`, `reporting`, `failure`, `assertion` (soft-assert,
-D22-bis — entièrement `internal`), `log`, `exception`.
+Packages : `sync` (dont le soft-assert, D22-bis), `page`, `data`, `secret`, `reporting`, `failure`, `log`,
+et la racine `com.example.qa` pour la racine d'erreurs `QaToolkitException` (domaine ERR ; ses sous-types
+vivent dans leur fonctionnalité).
 
 ### 2.2 Principes directeurs (transverses)
 
@@ -89,12 +95,14 @@ D22-bis — entièrement `internal`), `log`, `exception`.
 `sync`, `data`, `secret`, `reporting`, `log`, `exception`, `failure`, ainsi que les **contrats de sortie
 versionnés** (dossier `KO__` D8/D16, format de masquage `Secret` D12). Gel **pré-1.0.0** = marqueur
 d'intention (ajustable si l'étape 8 révèle un vrai besoin, tracé) ; verrou dur japicmp à **1.0.0**
-(étape 10). **Implémentation (étape 8) démarrée** : le **masquage du type `Secret` et du DOM capturé**
+(étape 10). **Les packages des types publics ont été réorganisés par fonctionnalité le 2026-10-17** (D15) :
+signatures inchangées, noms complets modifiés, toujours avant la 1.0.0. **Implémentation (étape 8) en cours** : le **masquage du type `Secret` et du DOM capturé**
 (domaine MASK — champs `type=password` masqués avant écriture du dump), la **capture d'échec** (domaine
 FAIL — `TestFailureManager` + capture du DOM brut `RawDomCaptureListener`) et l'**infrastructure
-soft-assert** (BF-SYNC-16 — `SoftAssertions`/`SoftAssertionExtension`, `internal.assertion`, D22-bis)
-sont **implémentés et testés** ; les autres composants (`sync`, `data`, retrait de secret, `reporting`,
-`log`) restent des coquilles typées. Cette SFD est le contrat que l'étape 8 honore composant par composant.
+soft-assert** (BF-SYNC-16 — `SoftAssertions`/`SoftAssertionExtension`, package `sync`, D22-bis), le domaine
+**SYNC web** (validé au navigateur le 2026-08-02) et `QaPageObject` sont **implémentés et testés** ; les
+autres composants (`data`, retrait de secret `CyberArkApiClient`, `reporting`, `log`, gestes `MobileSync`)
+restent des coquilles typées. Cette SFD est le contrat que l'étape 8 honore composant par composant.
 
 ---
 
@@ -104,8 +112,9 @@ sont **implémentés et testés** ; les autres composants (`sync`, `data`, retra
 
 **Objectif** : exposer aux PageObjects une surface familière (proche de `WebElement`/`WebElementFacade`)
 mais avec une **synchronisation intégrée à chaque méthode**, robuste aux SPA (Angular/React/Vue).
-**Composants** : `WebSync` (`api.sync`), `MobileSync` (`api.sync`), `AbstractSyncManager` (`internal.sync`),
-`SwipeDirection` (`api.sync`). **Réf.** : D3, D4, D15, D18.
+**Composants** (package `sync`) : `WebSync`, `MobileSync`, `SwipeDirection`, `SyncTimeout`,
+`SyncException` (publics) ; `AbstractSyncManager`, `SyncCondition`, `SoftAssertions` (package-private).
+**Réf.** : D3, D4, D15, D18.
 
 | ID | Besoin fonctionnel |
 |---|---|
@@ -126,7 +135,7 @@ mais avec une **synchronisation intégrée à chaque méthode**, robuste aux SPA
 | **BF-SYNC-15** | Au timeout, l'échec **doit** être traduit en `SyncException` porteuse d'un **message différencié** : « mauvaise page / page non chargée » si l'élément est absent ; « application instable » s'il est présent mais jamais interactable. Ces messages alimentent `TestFailureManager` et l'agent de maintenance (D9). |
 | **BF-SYNC-16** | Le socle **doit** offrir un mode **soft assert** piloté par config (`qa.assertions.soft`, défaut `false`) **sans changer les signatures** (`should…` reste `void`) : en mode soft, les assertions **n'lèvent pas** mais sont **collectées** (par test, `ThreadLocal`) ; en **fin de test**, une **extension Jupiter** (`AfterTestExecutionCallback`, D22-bis) agrège et **fait échouer** le test avec le récapitulatif de **toutes** les assertions KO (style `assertAll`). Pas de mode « warning + vert ». Bascule par la **seule clé**, zéro ligne côté test. *(D22, impl étape 8)* |
 
-**Règles de gestion** : `fluentWait` est écrit **une seule fois** dans l'abstract, `protected`, jamais
+**Règles de gestion** : `fluentWait` est écrit **une seule fois** dans l'abstract, package-private, jamais
 réimplémenté par les sous-classes (D3 maj). À l'intérieur, l'action délègue à l'API publique Serenity
 `WebElementFacade` (résolue par `By`) pour réutiliser retry intégré, `waitUntil*` et reporting.
 
@@ -140,11 +149,13 @@ hors périmètre). Réalisé : moteur `fluentWait(By, Function)` + `poll` (test�
 actif** (`SyncCondition` : `ABSENT/STALE/HIDDEN/DISABLED/OUT_OF_BOUNDS/INTERCEPTED`, message multi-codes),
 toute la surface + `within` (deux-temps, no-leak), `type(By, Secret)`, les `should…` branchés sur le
 soft-assert via `tryAssert` (testé). **Noms alignés strictement sur Serenity** (6 renommages, cf. D3 maj).
-**Reste (lot 2c)** : flag JS de re-render, neutralisation C8 (`serenity.conf`), `pageLoadTimeout`,
-validation bout-en-bout `qa-test`. BF-SYNC-15 (messages différenciés) : les libellés sont désormais portés
+**Lot 2c (2026-08-02, validé au navigateur par `qa-test`)** : « une seule horloge » (C8) réellement
+atteinte — les 8 actions mutantes agissent sur `WebElement` brut via `actRaw`, l'implicit wait est neutralisé
+via `ConfigurableTimeouts`, `pageLoadTimeout` est appliqué (détail : D3 et `plan-remediation.md`).
+**Reste** : injection du flag JS de re-render (BF-SYNC-03). BF-SYNC-15 (messages différenciés) : les libellés sont désormais portés
 par `SyncCondition` (message multi-codes), le principe « absent vs instable » reste.
 
-**Frontière API (tranchée, D15 — option A)** : `AbstractSyncManager` reste `internal`, mais ses méthodes
+**Frontière API (tranchée, D15 — option A)** : `AbstractSyncManager` reste un moteur caché (package-private), mais ses méthodes
 publiques (héritées par `WebSync`/`MobileSync`) sont **gelées** → garde-fou japicmp **élargi** (étape 10).
 Les façades restent **sous-classables / méthodes non-`final`** → échappatoire « bris de glace » (sous-classe
 nommée via un point d'obtention unique ; mode opératoire dans le Javadoc des façades).
@@ -155,12 +166,13 @@ nommée via un point d'obtention unique ; mode opératoire dans le Javadoc des f
 
 **Objectif** : lire/écrire des jeux de données de test (Excel, CSV) derrière un contrat neutre,
 permettant la bascule Excel↔CSV sans toucher au code de test.
-**Composants** : `DataFileManager`, `DataFiles` (`api.data`) ; `AbstractDataFileManager`,
-`ExcelFileReaderWriter`, `CsvFileReaderWriter` (`internal.data`). **Réf.** : D5, D15, D18.
+**Composants** (package `data`) : `DataFileManager`, `DataFiles`, `DataFileException` (publics) ;
+`AbstractDataFileManager` (`sealed`), `ExcelFileReaderWriter`, `CsvFileReaderWriter` (package-private).
+**Réf.** : D5, D15, D18.
 
 | ID | Besoin fonctionnel |
 |---|---|
-| **BF-DATA-01** | Le consommateur **doit** dépendre uniquement de l'interface `DataFileManager` ; les implémentations concrètes restent internes. |
+| **BF-DATA-01** | Le consommateur **doit** dépendre uniquement de l'interface `DataFileManager` ; les implémentations concrètes sont package-private (inaccessibles). |
 | **BF-DATA-02** | Le socle **doit** modéliser une ligne en `Map<String,String>` (clés = en-têtes de colonnes) et un jeu en `List<Map<String,String>>` **en préservant l'ordre des lignes**. |
 | **BF-DATA-03** | Le socle **doit** offrir : `readRows()` (source par défaut), `readRows(String source)` (feuille nommée), `getValue(int rowIndex, String column)` (accès ciblé), `writeRows(List…)` et `writeRows(String source, List…)`. |
 | **BF-DATA-04** | `getValue` **doit** être 0-based (hors ligne d'en-têtes) et **ne jamais** renvoyer `null` (cellule vide → chaîne vide). |
@@ -183,12 +195,13 @@ passe en basculant `DataFiles.excel(...)` ↔ `DataFiles.csv(...)` sans autre mo
 
 **Objectif** : récupérer des credentials (mots de passe, tokens) via un contrat neutre, pour absorber
 un changement d'outil de gestion des secrets sans impacter les projets appelants.
-**Composants** : `SecretManager` (`api.secret`) ; `CyberArkApiClient` (`internal.secret`). **Réf.** :
+**Composants** (package `secret`) : `SecretManager`, `SecretManagers`, `Secret`, `SecretException`
+(publics) ; `CyberArkApiClient` (package-private). **Réf.** :
 D12, D15, D18, D19.
 
 | ID | Besoin fonctionnel |
 |---|---|
-| **BF-SEC-01** | Le socle **doit** exposer une interface neutre `SecretManager` (sans type fournisseur) **et** une factory publique **`SecretManagers`** (`api.secret`) seule porte d'accès : `SecretManagers.get()` (méthode **neutre**, tenue une fois) renvoie le `SecretManager`, cachant `CyberArkApiClient` (`internal`). |
+| **BF-SEC-01** | Le socle **doit** exposer une interface neutre `SecretManager` (sans type fournisseur) **et** une factory publique **`SecretManagers`** (package `secret`) seule porte d'accès : `SecretManagers.get()` (méthode **neutre**, tenue une fois) renvoie le `SecretManager`, cachant `CyberArkApiClient` (package-private). |
 | **BF-SEC-02** | `SecretManager` **doit** offrir `Secret getSecret(String name)` (nom logique, cas courant) et `Secret getSecret(String safe, String object)` (cas multi-coffre piloté depuis le code). |
 | **BF-SEC-03** | Toute récupération **doit** retourner un `Secret` (jamais un `String` nu), afin que la valeur soit **masquée par défaut** partout (cf. domaine MASK). |
 | **BF-SEC-04** | Les **coordonnées d'infrastructure** du fournisseur (CyberArk AppID/Safe/Folder) **doivent** provenir de la **configuration** (`serenity.conf`, D19), résolues par l'implémentation ; le code de test ne fournit que ce qui **identifie** le secret. |
@@ -199,8 +212,8 @@ D12, D15, D18, D19.
 requête (`SecretRequest`) a été abandonné (D12 maj) : l'identification par `name` ou `(safe, object)`
 suffit. Erreurs traduites en `SecretException` **sans jamais exposer le secret** dans le message (D18).
 
-**✅ Clos** : la factory publique **`SecretManagers`** (`api.secret`, `get()` neutre) est le point d'accès
-retenu (D15) ; elle cache l'impl `CyberArkApiClient` (`internal`). Reste à brancher le corps à l'étape 8.
+**✅ Clos** : la factory publique **`SecretManagers`** (package `secret`, `get()` neutre) est le point d'accès
+retenu (D15) ; elle cache l'impl `CyberArkApiClient` (package-private). Reste à brancher le corps à l'étape 8.
 
 ---
 
@@ -208,7 +221,7 @@ retenu (D15) ; elle cache l'impl `CyberArkApiClient` (`internal`). Reste à bran
 
 **Objectif** : garantir qu'**aucun secret n'apparaît en clair** dans les logs, les `TestStep` Serenity,
 les dumps d'échec ou par concaténation accidentelle. **Risque OWASP** isolé (roadmap étape 7).
-**Composants** : `Secret` (`api.secret`) ; application par `TestFailureManager` et `WebSync`/`MobileSync`.
+**Composants** : `Secret` (package `secret`) ; application par `TestFailureManager` et `WebSync`/`MobileSync`.
 **Réf.** : D12, D14, D16-bis.
 
 | ID | Besoin fonctionnel |
@@ -242,12 +255,12 @@ dans `ERROR.log`, `FAIL.log`, le dump HTML et la sortie console, y compris en ca
 ### 3.5 Domaine REPORTING — Remontée des résultats dans ALM
 
 **Objectif** : publier l'avancement et le résultat des cas de test dans l'outil de gestion de tests
-(ALM OpenText/HP), **automatiquement** (reporting AUTO). **Composants** (tous **`internal.reporting`**) :
+(ALM OpenText/HP), **automatiquement** (reporting AUTO). **Composants** (package `reporting`, tous package-private sauf `ReportingException`) :
 `ReportingManager`, `TestExecutionReport`, `ExecutionStatus`, `AlmApiClient`. **Réf.** : D13, D15, D19.
 
 | ID | Besoin fonctionnel |
 |---|---|
-| **BF-REP-01** | Le reporting **doit** être **AUTO** : un **listener interne** du socle (comme la capture d'échec) publie pour **chaque** test. Le consommateur **ne référence aucun type reporting** (tout `internal`) — il pose `@WithTag("alm.testId:…")` + configure `qa.alm.*`. `ReportingManager` (interne) reste le **seam de swap** (ALM → autre = nouvelle impl). |
+| **BF-REP-01** | Le reporting **doit** être **AUTO** : un **listener interne** du socle (comme la capture d'échec) publie pour **chaque** test. Le consommateur **ne référence aucun type reporting** (tous package-private) — il pose `@WithTag("alm.testId:…")` + configure `qa.alm.*`. `ReportingManager` (interne) reste le **seam de swap** (ALM → autre = nouvelle impl). |
 | **BF-REP-02** | Le cycle **doit** comporter **deux appels par test, émis par le listener** : `publishStart(String almTestId)` en début (« In Progress ») et `publishEnd(TestExecutionReport)` en fin (statut final). Résolution `@WithTag` : **aucun** tag `alm.testId` → **non remonté** (opt-out silencieux) ; **plusieurs** → le **premier**. |
 | **BF-REP-03** | `TestExecutionReport` **doit** être un objet valeur neutre immuable (`almTestId` + `status`), **extensible** (durée, message d'erreur…) sans rompre la signature de `publishEnd`. |
 | **BF-REP-04** | `ExecutionStatus` **doit** énumérer `IN_PROGRESS`, `PASSED`, `FAILED`. |
@@ -258,7 +271,7 @@ dans `ERROR.log`, `FAIL.log`, le dump HTML et la sortie console, y compris en ca
 | **BF-REP-09** | La remontée **doit** être désactivable par `qa.reporting.enabled` (défaut `true`) sans toucher au code. |
 | **BF-REP-10** | Chaque appel **doit** être **stateless** : ouverture/fermeture de sa propre session ALM, aucune session partagée entre threads (sûreté en parallèle Serenity). |
 
-**Tranché** : reporting **AUTO** → **pas de factory**, domaine **`internal`** (D13/D15) ; version ALM
+**Tranché** : reporting **AUTO** → **pas de factory**, types d'usage package-private (D13/D15) ; version ALM
 cible **24** (impl sur doc technique v24 — assez récente pour rester compatible v25/26) ; mode fichier =
 mapping à **2 colonnes** (adresse test Serenity ↔ adresse instance de test ALM).
 **⚠️ Reste à figer (étape 8, non bloquant)** : le **nom des colonnes** du fichier de mapping.
@@ -269,12 +282,12 @@ mapping à **2 colonnes** (adresse test Serenity ↔ adresse instance de test AL
 
 **Objectif** : produire automatiquement, pour **chaque test KO**, un jeu d'artefacts de diagnostic
 **uniforme sur les 17 projets**, consommé par l'agent `qa-maintenance` et la récupération CI.
-**Composants** : `TestFailureManager`, `RawDomCaptureListener` (`internal.failure`). **Réf.** : D8, D16, D16-bis, D9.
+**Composants** (package `failure`, `public final` car chargés par ServiceLoader) : `TestFailureManager`, `RawDomCaptureListener`. **Réf.** : D8, D16, D16-bis, D9.
 
 | ID | Besoin fonctionnel |
 |---|---|
 | **BF-FAIL-01** | Pour un test **KO uniquement**, le socle **doit** créer un dossier `KO__{ENV}__{NomDuTest}__{ts}/` (délimiteur `__`) contenant **toujours** trois fichiers : `ERROR.log` (synthétique), `FAIL.log` (trace complète) et un **dump HTML** de la step en erreur (cf. BF-FAIL-08). **Aucun artefact** pour un test OK. |
-| **BF-FAIL-02** | Le mécanisme **doit** s'activer **nativement** par la seule présence du jar, via le **ServiceLoader de JUnit Platform** : `TestFailureManager` (`internal.failure`) implémente lui-même `TestExecutionListener`, déclaré dans `META-INF/services/org.junit.platform.launcher.TestExecutionListener`, auto-enregistré par le `Launcher` que Surefire lance. **Aucun type public, aucune annotation, aucun import** côté consommateur. *(Confirmé via `qa-test` : Serenity découvre **aussi** un `StepListener` déclaré en services, utilisé pour la capture du DOM brut — BF-FAIL-08 ; cf. D16.)* |
+| **BF-FAIL-02** | Le mécanisme **doit** s'activer **nativement** par la seule présence du jar, via le **ServiceLoader de JUnit Platform** : `TestFailureManager` (package `failure`) implémente lui-même `TestExecutionListener`, déclaré dans `META-INF/services/org.junit.platform.launcher.TestExecutionListener`, auto-enregistré par le `Launcher` que Surefire lance. **Aucun type public, aucune annotation, aucun import** côté consommateur. *(Confirmé via `qa-test` : Serenity découvre **aussi** un `StepListener` déclaré en services, utilisé pour la capture du DOM brut — BF-FAIL-08 ; cf. D16.)* |
 | **BF-FAIL-03** | L'option « annotation » (ex. `@ExtendWith(...)`) est **explicitement rejetée** : une annotation oubliée produirait une absence silencieuse d'artefacts. L'opt-out **doit** se faire par configuration, pas par omission de code. |
 | **BF-FAIL-04** | Les contenus **doivent** être bâtis **en Java** à partir du `TestOutcome` Serenity (`getTestSteps()` + `TestStep.getException()`/`getErrorMessage()`), **sans buffer maison**, en appliquant le **masquage** (BF-MASK-05). |
 | **BF-FAIL-05** | Le mécanisme **doit** être paramétrable par clés de config **toutes dotées d'une valeur par défaut** (figées en constantes `TestFailureManager`), unifiées sous `qa.failure.artefacts.*` : `.enabled` (`true`, opt-out), `.outputDir` (`target/qa-results`), `.dumpHtml` (`true`). Le `{ENV}` du nommage `KO__` **n'est pas une clé du socle** : il est lu de l'**environnement Serenity actif** (propriété `environment`, D19) — source unique. |
@@ -297,7 +310,7 @@ sortie gravé (D8). **Reste** : validation « zéro clair » bout-en-bout au pil
 ### 3.7 Domaine LOG — Journalisation (log live)
 
 **Objectif** : fournir un **log live uniforme par défaut** (console/fichier pendant le run), activé sans
-configuration, surchargeable par projet. **Composant** : `LogbackConfigurator` (`internal.log`).
+configuration, surchargeable par projet. **Composant** : `LogbackConfigurator` (package `log`).
 **Réf.** : D14, D16-bis, D17, D19.
 
 | ID | Besoin fonctionnel |
@@ -309,13 +322,14 @@ configuration, surchargeable par projet. **Composant** : `LogbackConfigurator` (
 | **BF-LOG-05** | Le log live **doit** être strictement distinct des artefacts `KO__` (écrits en Java, BF-FAIL-04) : la config Logback n'influence **pas** ces artefacts. |
 
 **Règles de gestion** : initialisation **one-time** au démarrage JVM (D19). Le binding Logback est
-fourni en scope `runtime` (transmis à l'exécution sans polluer la compilation des consommateurs).
+aujourd'hui fourni en scope `runtime` (transmis à l'exécution sans polluer la compilation des
+consommateurs).
 
-**⚠️ Point ouvert (étape 6)** : arbitrage technique — `LogbackConfigurator` devra implémenter
-`ch.qos.logback.classic.spi.Configurator`, ce qui exige Logback en **compile** pour cette classe alors
-que le scope actuel est **runtime**. Décider comment compiler le configurator sans exposer Logback aux
-consommateurs (cf. D16-bis), **avant** d'implémenter (resources `logback-socle.xml` +
-`META-INF/services/...` créées en étape 8).
+**✅ Tranché (étape 6, D16-bis)** : `LogbackConfigurator` doit implémenter
+`ch.qos.logback.classic.spi.Configurator`, ce qui exige Logback en **compile**. Le scope passe donc à
+`compile` et le couplage au binding est interdit côté consommateur par une **règle ArchUnit** (ENF-02),
+non plus par l'isolation de scope. **Application à l'étape 8** : scope, `Configurator`, resources
+`logback-socle.xml` + `META-INF/services/...`, règle ArchUnit — en un seul lot (duo indissociable).
 
 ---
 
@@ -323,15 +337,16 @@ consommateurs (cf. D16-bis), **avant** d'implémenter (resources `logback-socle.
 
 **Objectif** : une hiérarchie d'exceptions maison **unchecked**, support des signatures publiques et de
 l'outillage de maintenance. **Composants** : `QaToolkitException` + `SyncException`, `DataFileException`,
-`SecretException`, `ReportingException` (`api.exception`). **Réf.** : D18, D9.
+`SecretException`, `ReportingException` (racine `com.example.qa` pour la racine ; chaque sous-type dans
+sa fonctionnalité). **Réf.** : D18, D9, D15.
 
 | ID | Besoin fonctionnel |
 |---|---|
 | **BF-ERR-01** | Toutes les exceptions du socle **doivent** être **unchecked** (étendre `RuntimeException` via la racine), pour ne pas polluer le code de test de `throws`/`try-catch`. |
-| **BF-ERR-02** | La racine **doit** être `QaToolkitException` **concrète** : un seul `catch (QaToolkitException)` attrape **toute** erreur d'origine socle (clé pour l'outillage de maintenance D9). |
-| **BF-ERR-03** | Le socle **doit** offrir **4 sous-types par domaine** (`SyncException`, `DataFileException`, `SecretException`, `ReportingException`) et **aucun** sous-type par *nature* d'erreur (la nature voyage dans le **message + la `cause`**). |
+| **BF-ERR-02** | La racine **doit** être `QaToolkitException`, **abstraite** : un seul `catch (QaToolkitException)` attrape **toute** erreur d'origine socle (clé pour l'outillage de maintenance D9) ; le consommateur ne l'instancie ni ne la lève. |
+| **BF-ERR-03** | Le socle **doit** offrir **4 sous-types par domaine** (`SyncException`, `DataFileException`, `SecretException`, `ReportingException`) et **aucun** sous-type par *nature* d'erreur (la nature voyage dans le **message + la `cause`**). Chaque sous-type est `final`, rangé dans sa fonctionnalité, ses constructeurs sont package-private : le consommateur l'**attrape**, seul le socle la **lève**. |
 | **BF-ERR-04** | Les exceptions tierces ***checked*** (I/O fichier, HTTP) **doivent** être **converties en unchecked à la frontière** (exception translation), l'originale conservée en **`cause`** (stacktrace complète dans `FAIL_*.log`). |
-| **BF-ERR-05** | Chaque exception **doit** offrir les constructeurs `(String message)` et `(String message, Throwable cause)`. |
+| **BF-ERR-05** | Chaque exception **doit** offrir les constructeurs `(String message)` et `(String message, Throwable cause)` (package-private pour les sous-types, `protected` pour la racine). |
 | **BF-ERR-06** | `SyncException` **doit** déduire son message différencié de la `cause` du `TimeoutException` Selenium (dernière exception ignorée) — cf. BF-SYNC-15. |
 | **BF-ERR-07** | Le message d'une `SecretException` **ne doit jamais** contenir de secret en clair. |
 
@@ -370,7 +385,7 @@ D21, D7, roadmap étapes 2 et 10.
 | **BF-VER-04** | L'**enforcer** **doit** imposer : `requireMavenVersion [3.9.9,5.0.0)`, `requireJavaVersion [17,)`, `banDynamicVersions` (snapshots et ranges tolérés), `bannedDependencies` (un **seul** binding SLF4J : Logback). |
 | **BF-VER-05** | Le socle **doit** imposer les versions de **Selenium et Serenity** (non négociables côté consommateur) et les transmettre en scope `compile` (réexport, y compris JUnit 5). |
 | **BF-VER-06** | Le versioning **doit** être **SemVer strict** : jamais de breaking change en mineur/patch, ni sur l'API publique, ni sur le **contrat de sortie** (BF-FAIL-06). |
-| **BF-VER-07** | À partir de la 1ʳᵉ release, un **garde-fou de compatibilité** (japicmp/revapi) **doit** faire échouer le build sur breaking change non intentionnel, baseline = dernière version publiée (périmètre = packages `api`). |
+| **BF-VER-07** | À partir de la 1ʳᵉ release, un **garde-fou de compatibilité** (japicmp/revapi) **doit** faire échouer le build sur breaking change non intentionnel, baseline = dernière version publiée (périmètre = types publics du socle ; surface héritée d'`AbstractSyncManager` incluse, cf. D15/C7). |
 | **BF-VER-08** | Un **mécanisme d'échappement** **doit** permettre de figer ponctuellement un projet (non-merge de la PR de bump / `git revert`). |
 | **BF-VER-09** | Un élément d'API retiré **doit** d'abord être marqué `@Deprecated` (+ remplacement en Javadoc) en version **mineure**, et **ne peut être supprimé qu'après ≥ 3 versions mineures** de coexistence (déprécié en `x.y` → retirable au plus tôt en `x.(y+3)`). Unique entorse bornée au SemVer strict. *(D21)* |
 | **BF-VER-10** | La publication d'une release **doit** être **déclenchée manuellement par le mainteneur**, **uniquement** sur **CI verte** (non-régression BF-VAL-05 passée). Pas de publication automatique sur tag/branche. *(D21)* |
@@ -383,7 +398,7 @@ D21, D7, roadmap étapes 2 et 10.
 | ID | Exigence | Réf. |
 |---|---|---|
 | **ENF-01 — Thread-safety** | Aucun `static` mutable partagé (`static` ⇒ `final` + immuable/thread-safe/`ThreadLocal`) ; confinement du driver au thread courant ; chemins d'artefacts uniques. Portées par composant : `WebSync`/`MobileSync` par instance (driver du thread) ; `DataFileManager` par usage ; `SecretManager`/`ReportingManager` singleton stateless ; `TestFailureManager` sans état. | D19 |
-| **ENF-02 — Garde-fous ArchUnit** | Règles **ArchUnit** embarquées dans le jar `qa-socle`, imposées aux 17 consommateurs via Surefire `dependenciesToScan` + `qa.archunit.basePackage` (Parent POM) : (1) « pas de champ `static` non-`final` » ; (2) **pas de dépendance à `ch.qos.logback..` hors `internal.log`** (le consommateur passe par SLF4J, pas par le binding). | D19 (option α), D16-bis |
+| **ENF-02 — Garde-fous ArchUnit** | Règles **ArchUnit** embarquées dans le jar `qa-socle`, imposées aux 17 consommateurs via Surefire `dependenciesToScan` + `qa.archunit.basePackage` (Parent POM) : (1) « pas de champ `static` non-`final` » ; (2) **pas de dépendance à `ch.qos.logback..` hors `com.example.qa.log`** (le consommateur passe par SLF4J, pas par le binding). | D19 (option α), D16-bis |
 | **ENF-03 — Neutralité de l'adoption** | Le base package `com.example.qa` et le `groupId` sont des **placeholders** personnalisés à l'adoption (1 refactor IDE + 2 `<groupId>`) ; les configs runtime (`"qa"`, `serenity.conf`) sont **package-agnostiques** et ne changent pas à l'adoption. | D17 |
 | **ENF-04 — Compatibilité CI** | Le socle et ses conventions restent compatibles avec la config Jenkins (autre équipe) ; en cas de divergence, compromis. | D7 |
 | **ENF-05 — Robustesse synchro** | Le polling `fluentWait` (~250 ms, timeout configurable) absorbe les exceptions transitoires sans faire échouer prématurément le test. | D3 |
@@ -406,14 +421,14 @@ D21, D7, roadmap étapes 2 et 10.
 
 | Domaine | Besoins | Composants | Décisions | Étape roadmap | État signatures |
 |---|---|---|---|---|---|
-| SYNC | BF-SYNC-01…16 | `WebSync`, `MobileSync`, `AbstractSyncManager`, `SwipeDirection`, **`SyncTimeout`** (api) ; `SyncCondition`, `SoftAssertions`/`SoftAssertionExtension` (internal) | D3, D4, D22, D22-bis | 6 → 8 | ✅ **web implémenté** (2026-07-13 : moteur, surface, `within`, `should…`/soft-assert, profils, diagnostic) ; noms alignés Serenity ; reste flag JS/C8/pageLoad (2c) + mobile différé |
+| SYNC | BF-SYNC-01…16 | `WebSync`, `MobileSync`, `AbstractSyncManager`, `SwipeDirection`, **`SyncTimeout`**, `SyncException` (publics) ; `SyncCondition`, `SoftAssertions` (package-private) ; `SoftAssertionExtension` (`public final`, ServiceLoader) | D3, D4, D22, D22-bis | 6 → 8 | ✅ **web implémenté** (2026-07-13 : moteur, surface, `within`, `should…`/soft-assert, profils, diagnostic) et **validé au navigateur** (2026-08-02 : C8, `pageLoadTimeout`) ; noms alignés Serenity ; reste flag JS + mobile différé |
 | DATA | BF-DATA-01…09 | `DataFileManager`, `DataFiles`, `Abstract…`, `Excel`/`Csv…` | D5 | 6 → 8 | ✅ figées |
 | SECRET | BF-SEC-01…06 | `SecretManager`, **`SecretManagers`** (factory), `CyberArkApiClient` | D12 | 6 → 8 | ✅ figées + factory |
 | MASK | BF-MASK-01…06 | `Secret` (+ `TestFailureManager`) | D12, D14, D16, D16-bis | 6/7 → 8 | ✅ signatures + format D12 + **masquage `Secret` et DOM (password) implémentés & testés** ; « zéro clair » e2e au pilote |
-| REPORTING | BF-REP-01…10 | `ReportingManager`, `TestExecutionReport`, `ExecutionStatus`, `AlmApiClient` (tous **`internal`**) | D13 | 6 → 8 | ✅ figées + **AUTO/internal** (pas de factory) |
+| REPORTING | BF-REP-01…10 | `ReportingManager`, `TestExecutionReport`, `ExecutionStatus`, `AlmApiClient` (tous **package-private**) | D13 | 6 → 8 | ✅ figées + **AUTO** (types package-private, pas de factory) |
 | FAIL | BF-FAIL-01…08 | `TestFailureManager`, `RawDomCaptureListener` | D8, D16, D16-bis | 6 → 8 | ✅ hook + clés + contrat gravé ; **impl + tests faits** (DOM brut option A) |
 | LOG | BF-LOG-01…05 | `LogbackConfigurator` | D14, D16-bis, D17 | 6 → 8 | ✅ constantes + scope tranché (`compile` + ArchUnit) |
-| ERR | BF-ERR-01…07 | `QaToolkitException` + 4 sous-types | D18 | 3 (✅) | ✅ figées (sans `throws`) |
+| ERR | BF-ERR-01…07 | `QaToolkitException` (abstraite, racine) + 4 sous-types `final` (un par fonctionnalité) | D18 | 3 (✅) | ✅ figées (sans `throws`) ; reparties par fonctionnalité le 2026-10-17 |
 | CONF | BF-CONF-01…04 | (transverse, Serenity) | D19 | 4 (✅) → 8 | n/a |
 | VER | BF-VER-01…11 | `qa-parent`, Wrapper, Enforcer | D6, D6-bis, D21, D7 | 2 (✅) , 10 | 🟡 partiel |
 | VAL | BF-VAL-01…05 | projet consommateur, WireMock, fixtures | D20 | 5 (✅) → 8/9 | n/a |

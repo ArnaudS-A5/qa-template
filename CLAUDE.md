@@ -34,34 +34,38 @@ qa-socle/      # Le jar livré aux ~17 projets consommateurs
 
 Les consommateurs déclarent `qa-parent` comme parent POM et ajoutent `qa-socle` comme dépendance — sans déclarer aucune version (tout est dans `dependencyManagement` du parent). La montée de version = bumper `<parent><version>` dans chaque projet consommateur.
 
-### Convention de visibilité api / internal (D15)
+### Convention de visibilité : un package par fonctionnalité (D15)
 
-Toute la base de code est sous `com.example.qa` et se divise en deux sous-arbres :
+Toute la base de code est sous `com.example.qa`, **un package par fonctionnalité** (`sync`, `page`, `data`, `secret`, `failure`, `reporting`, `log`) plus la racine, qui porte `QaToolkitException`. Il n'y a **plus** de séparation `api` / `internal` : la frontière est portée par les **modificateurs Java**, la façade et ses implémentations vivant dans le même package.
 
-- **`api.<domaine>`** — contrat public, gelé depuis 2026-06-24. Ce que les 17 projets importent. Périmètre du garde-fou japicmp (étape 10).
-- **`internal.<domaine>`** — implémentations, moteurs, listeners. Jamais référencé par le consommateur. Libre de changer *sauf* les méthodes publiques héritées par `WebSync`/`MobileSync` (exception explicitée dans D15).
+- **`public`** — contrat consommé par les 17 projets (façades, interfaces, factories, `Secret`, exceptions, `QaPageObject`). Gelé depuis 2026-06-24 (noms de packages réorganisés le 2026-10-17, avant la 1.0.0). Périmètre du garde-fou japicmp (étape 10).
+- **package-private** — implémentations et moteurs (`AbstractSyncManager`, `CyberArkApiClient`, `AlmApiClient`, `CsvFileReaderWriter`, `SoftAssertions`…). Le compilateur interdit au consommateur de les référencer. Libres de changer, *sauf* les méthodes publiques héritées par `WebSync`/`MobileSync` (exception explicitée dans D15).
+- **`public final`, par obligation ServiceLoader** — `TestFailureManager`, `RawDomCaptureListener`, `SoftAssertionExtension`, `LogbackConfigurator` : jamais référencés par le consommateur, leurs membres utilitaires sont package-private.
+- **`sealed`** — seulement `AbstractDataFileManager` (permits CSV et Excel) : hors module nommé, `sealed` exige que les sous-classes soient dans le même package.
+
+Ajouter un type : `public` seulement si le consommateur en a besoin, sinon package-private (et `final` si aucune extension n'est prévue).
 
 ### Domaines fonctionnels
 
-| Domaine | Accès public (`api`) | Interne (`internal`) | Activation |
+| Domaine | Contrat public | Caché (package-private) | Activation |
 |---|---|---|---|
-| `sync` | `WebSync`, `MobileSync`, `SwipeDirection`, `SyncTimeout` | `AbstractSyncManager`, `SyncCondition` | Instance créée par le consommateur (`new WebSync()` = profil MEDIUM) |
+| `sync` | `WebSync`, `MobileSync`, `SwipeDirection`, `SyncTimeout`, `SyncException` | `AbstractSyncManager`, `SyncCondition` | Instance créée par le consommateur (`new WebSync()` = profil MEDIUM) |
 | `page` | `QaPageObject` | *(aucun)* | **Héritage** : le PageObject consommateur étend `QaPageObject` et dispose de `web` |
-| `data` | `DataFileManager` (interface), `DataFiles` (factory) | `AbstractDataFileManager`, `ExcelFileReaderWriter`, `CsvFileReaderWriter` | Via factory |
-| `secret` | `SecretManager` (interface), `SecretManagers` (factory), `Secret` | `CyberArkApiClient` | Via factory |
-| `failure` | *(aucun)* | `TestFailureManager`, `RawDomCaptureListener` | **Auto** — ServiceLoader (présence du jar) |
-| `assertion` | *(aucun)* | `SoftAssertions`, `SoftAssertionExtension` | **Auto** — ServiceLoader Jupiter + autodetection (Parent POM) |
-| `reporting` | *(aucun)* | `ReportingManager`, `AlmApiClient`, `TestExecutionReport`, `ExecutionStatus` | **Auto** — ServiceLoader |
-| `log` | *(aucun)* | `LogbackConfigurator` | **Auto** — ServiceLoader Logback |
-| `exception` | `QaToolkitException` + 4 sous-types domaine | — | Levées par le socle |
+| `data` | `DataFileManager` (interface), `DataFiles` (factory), `DataFileException` | `AbstractDataFileManager` (`sealed`), `ExcelFileReaderWriter`, `CsvFileReaderWriter` | Via factory |
+| `secret` | `SecretManager` (interface), `SecretManagers` (factory), `Secret`, `SecretException` | `CyberArkApiClient` | Via factory |
+| `failure` | *(aucun type d'usage)* | `TestFailureManager`, `RawDomCaptureListener` (`public final`, ServiceLoader) | **Auto** — ServiceLoader (présence du jar) |
+| soft-assert (package `sync`) | *(aucun type d'usage)* | `SoftAssertions` ; `SoftAssertionExtension` (`public final`, ServiceLoader) | **Auto** — ServiceLoader Jupiter + autodetection (Parent POM) |
+| `reporting` | `ReportingException` | `ReportingManager`, `AlmApiClient`, `TestExecutionReport`, `ExecutionStatus` | **Auto** — ServiceLoader |
+| `log` | *(aucun type d'usage)* | `LogbackConfigurator` (`public final`, ServiceLoader) | **Auto** — ServiceLoader Logback |
+| racine `com.example.qa` | `QaToolkitException` (abstraite) | — | Levée via les sous-types de domaine |
 
 ### Activation native (ServiceLoader)
 
 Trois services sont auto-découverts par la simple présence du jar `qa-socle` — aucune annotation côté consommateur :
 
-1. `META-INF/services/org.junit.platform.launcher.TestExecutionListener` → `TestFailureManager` (écrit les artefacts `KO__` à l'échec)
-2. `META-INF/services/net.thucydides.model.steps.StepListener` → `RawDomCaptureListener` (capture `driver.getPageSource()` au moment du `stepFailed`, mémorisé en `ThreadLocal`)
-3. `META-INF/services/org.junit.jupiter.api.extension.Extension` → `SoftAssertionExtension` (draine le collecteur soft-assert en fin de test et fait échouer si nécessaire — D22-bis). Nécessite `junit.jupiter.extensions.autodetection.enabled=true`, posé dans la config Surefire du Parent POM (hérité).
+1. `META-INF/services/org.junit.platform.launcher.TestExecutionListener` → `failure.TestFailureManager` (écrit les artefacts `KO__` à l'échec)
+2. `META-INF/services/net.thucydides.model.steps.StepListener` → `failure.RawDomCaptureListener` (capture `driver.getPageSource()` au moment du `stepFailed`, mémorisé en `ThreadLocal`)
+3. `META-INF/services/org.junit.jupiter.api.extension.Extension` → `sync.SoftAssertionExtension` (draine le collecteur soft-assert en fin de test et fait échouer si nécessaire — D22-bis). Nécessite `junit.jupiter.extensions.autodetection.enabled=true`, posé dans la config Surefire du Parent POM (hérité).
 
 `TestFailureManager` consomme le DOM capté via `consumeCapturedDom()` dans `executionFinished` (même thread → thread-safe, validé en parallèle), et masque la `value` des `<input type="password">` avant écriture du `.html` (`maskPasswordInputs`).
 
@@ -81,10 +85,11 @@ Le délimiteur `__` (double) est volontaire : les champs contiennent des `_` sim
 ### Règles de conception à respecter
 
 - **No-leak** : `WebSync`/`MobileSync` ne retournent jamais de `WebElement`/`WebElementFacade` vivant. Tout passe par `By` et retourne des valeurs. La recherche contextuelle passe par `within(By)`.
-- **Exceptions unchecked** : toutes les exceptions du socle étendent `QaToolkitException` (RuntimeException). Les exceptions tierces checked (`IOException`…) sont traduites à la frontière avec `cause` conservée. Aucune clause `throws` dans les signatures publiques.
+- **Exceptions unchecked** : toutes les exceptions du socle étendent `QaToolkitException` (RuntimeException, abstraite). Chaque sous-type est `final`, rangé dans sa fonctionnalité, et ses constructeurs sont package-private : le consommateur les **attrape**, seul le socle les **lève**. Les exceptions tierces checked (`IOException`…) sont traduites à la frontière avec `cause` conservée. Aucune clause `throws` dans les signatures publiques.
 - **Nommage** : interface = nom du concept (`SecretManager`, `DataFileManager`) ; abstract = préfixe `Abstract` ; impl = nom descriptif du rôle réel (`CyberArkApiClient`, `ExcelFileReaderWriter`). Pas de suffixe `Impl`, pas de préfixe `I`.
 - **Masquage** : `Secret#toString()` / `masked()` → 2 premiers caractères + étoiles proportionnelles + 16 hexa SHA-256. Format figé (D12).
 - **Configuration** : le socle lit ses clés via l'API Serenity (`EnvironmentSpecificConfiguration`). Précédence : system properties `-D` > `serenity.conf` > `serenity.properties`. Pas de couche de config maison.
+- **Visibilité** : le consommateur n'accède qu'aux types `public` (façades, interfaces, factories) ; tout le reste est package-private (cf. D15). Ne jamais rendre un type `public` « pour les tests » : les tests du socle vivent dans le même package.
 - **Thread-safety** : pas de champ `static` mutable partagé. L'état par test est délégué à Serenity (`TestOutcome`/`TestStep`). Les drivers sont confinés au thread courant.
 
 ## Git flow
@@ -93,14 +98,15 @@ Branches : `master` (stable, taguée aux releases) → `develop` (intégration) 
 
 Convention de commit : `<type>(<zone>): <résumé impératif court>` avec types `feat|fix|test|refactor|chore|docs|ci`.
 
-## Statut du projet (2026-08-03)
+## Statut du projet (2026-10-17)
 
 - **Étapes 1–6 terminées** : structure, versioning, exceptions, config, stratégie de test, signatures gelées (gel API 2026-06-24).
+- **Réorganisation par fonctionnalité (2026-10-17, branche `feature/package-by-feature`)** : packages `api`/`internal` remplacés par un package par fonctionnalité, implémentations package-private (D15 réécrite). Les noms complets des types publics ont changé (ex. `com.example.qa.sync.WebSync`) : les imports de `qa-test` sont à mettre à jour. Build vert, 70 tests.
 - **Étape 7 en cours** : masquage `Secret` + masquage du DOM (`maskPasswordInputs`, champs `type=password`) implémentés et testés unitairement ; validation « zéro clair » **confirmée au navigateur** (0 occurrence en clair dans les dumps).
 - **Étape 8 en cours** :
-  - **FAILURE** (`TestFailureManager` + `RawDomCaptureListener`) et **infra soft-assert** (`SoftAssertions`/`SoftAssertionExtension`, D22-bis) — faits + testés.
+  - **FAILURE** (`TestFailureManager` + `RawDomCaptureListener`) et **infra soft-assert** (`SoftAssertions`/`SoftAssertionExtension`, package `sync`, D22-bis) — faits + testés.
   - **SYNC web** — **fait et validé au navigateur** (campagne `qa-test` du 2026-08-02) : moteur `poll`, profils `SyncTimeout` **effectivement appliqués**, diagnostic actif `SyncCondition`, 78 méthodes, `within`, `type(By,Secret)`, `should…` via `tryAssert`. **C8 (« une seule horloge ») réellement atteint** : `NO_FACADE_CLOCK = 1L`, les 8 actions mutantes sur `WebElement` brut via `actRaw`, implicit wait neutralisé via `ConfigurableTimeouts`, garde `requireEnabled`, `classify` élargi aux exceptions Serenity. `pageLoadTimeout` appliqué (marqueur lié au driver).
-  - **`QaPageObject`** (`api.page`) : classe de base des PageObjects consommateurs.
+  - **`QaPageObject`** (package `page`) : classe de base des PageObjects consommateurs.
   - **Restent** : sentinelle **flag JS**, `DataFileManager`, `LogbackConfigurator`, ArchUnit, `CyberArkApiClient`, reporting AUTO, gestes `MobileSync`.
 - **Étapes 9–10** : à faire (pilote, japicmp, release 1.0.0).
 - **Suivi des correctifs** : `qa-socle/docs/plan-remediation.md` (plan micro, statuts à jour).

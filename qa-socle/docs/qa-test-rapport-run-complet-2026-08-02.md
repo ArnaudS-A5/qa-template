@@ -4,6 +4,10 @@
 **Env :** Java 17 (Microsoft 17.0.19), Maven 3.9.12, Chrome (défaut `serenity.conf`)
 **Fin de build :** 2026-08-02 05:52:45 · **Durée :** 1 min 48 · **Statut Maven :** `BUILD SUCCESS`
 
+> **Note de lecture (2026-10-17)** — Rapport daté, conservé tel quel : les extraits Surefire cités
+> portent les noms de classes **d'avant** la réorganisation par fonctionnalité (`com.example.qa.api.exception.SyncException`,
+> aujourd'hui `com.example.qa.sync.SyncException`).
+
 ## 1. Synthèse globale
 
 | Indicateur | Valeur |

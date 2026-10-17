@@ -70,7 +70,7 @@
              ⚠️ Étape 8 : Logback passera en scope `compile` (pour que LogbackConfigurator
              implémente ch.qos.logback.classic.spi.Configurator) ; le couplage au binding côté
              consommateur sera alors interdit par une règle ArchUnit (aucune dépendance à
-             ch.qos.logback.. hors internal.log), et non plus par l'isolation de scope.
+             ch.qos.logback.. hors com.example.qa.log), et non plus par l'isolation de scope.
              Les deux changements forment un duo indissociable (D16-bis / D19-α). -->
         <dependency>
             <groupId>org.slf4j</groupId>

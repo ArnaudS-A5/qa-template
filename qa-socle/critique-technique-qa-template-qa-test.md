@@ -1,5 +1,13 @@
 # Revue technique consolidée — `qa-template` et `qa-test`
 
+> **Note de lecture (2026-10-17)** — Rapport daté, conservé tel quel. Les noms de packages cités
+> (`com.example.qa.internal.sync…`, `api.*`) sont ceux **d'avant** la réorganisation par fonctionnalité
+> (décision D15 réécrite) : `internal.sync.AbstractSyncManager` est devenu `sync.AbstractSyncManager`
+> (package-private) et les types `api.<domaine>` vivent désormais dans `<domaine>`. Le risque **P0 / C7**
+> décrit ci-dessous est reformulé dans `docs/decisions.md` (D15) : avec le moteur package-private, javac
+> génère des méthodes de pont synthétiques dans `WebSync.class`, à rendre visibles à japicmp
+> (`includeSynthetic`, étape 10).
+
 ## Objet et périmètre
 
 Ce document consolide la revue croisée des branches `develop` des deux dépôts :

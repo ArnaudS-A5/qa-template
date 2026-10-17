@@ -46,8 +46,9 @@ des projets et reste invisible. Aucune skill de migration n'est nécessaire.
 Acté lors de l'écriture des signatures (étape 6), **sans renier le `fluentWait` maison** :
 
 - **`fluentWait` reste le chef d'orchestre** de la synchro (moteur SPA « relou », testé/approuvé).
-  Il vit dans `AbstractSyncManager`, est **`protected`** (hérité, donc plus « privé » comme prévu
-  initialement) et **n'est jamais réimplémenté** par les sous-classes — écrit **une seule fois**.
+  Il vit dans `AbstractSyncManager`, est **package-private** (il était `protected` jusqu'à la
+  réorganisation du 2026-10-17, cf. D15) et **n'est jamais réimplémenté** par les sous-classes — écrit
+  **une seule fois**.
   *État actuel : coquille typée renvoyant `null` ; le corps réel (spec ci-dessus) est l'étape 8.*
 - **À l'intérieur** du `fluentWait`, l'action ne manipule **pas** durablement un `WebElement` Selenium
   brut : elle ré-résout le `By`, puis
@@ -100,15 +101,15 @@ l'implémentation, tous validés en séance :
   - Le **DOM-stability** (attendre N ms de « silence » du DOM) est **écarté** (non fiable, ajoute des
     attentes mortes). Pour « attendre qu'une zone soit prête », on attend un **élément témoin** via
     `fluentWait`.
-- **Profils de timeout `SyncTimeout`** (enum **`api.sync`**, choisi à la construction — `new WebSync()`
+- **Profils de timeout `SyncTimeout`** (enum publique du package **`sync`**, choisi à la construction — `new WebSync()`
   = `MEDIUM`, `new WebSync(SyncTimeout.LONG)`) : `SHORT/MEDIUM/LONG/EXTRA_LONG` (défauts **5/15/60/120 s**),
   chacun adossé à une clé `qa.sync.timeout.<profil>` **pilotable** (jamais de durée en dur dans les
   PageObjects). Pas de catégories libres. Polling `qa.sync.pollingInterval` (250 ms).
-- **Signature du moteur** : la coquille `fluentWait(Duration, Supplier<T>)` (protected, `internal`) est
+- **Signature du moteur** : la coquille `fluentWait(Duration, Supplier<T>)` (alors `protected`, aujourd'hui package-private, D15) est
   remplacée par **`fluentWait(By, Function<WebElementFacade,T>)`** — le `By` est intrinsèque au moteur
   (résolution paresseuse + diagnostic). Cœur « pur » testable : `poll(...)` (boucle + absorption des
   transitoires + `buildSyncException`).
-- **Diagnostic actif au timeout** (`SyncCondition`, enum `internal.sync`) : chaque condition ≡ une
+- **Diagnostic actif au timeout** (`SyncCondition`, enum package-private du package `sync`) : chaque condition ≡ une
   exception Selenium (1:1), classée par la **plus spécifique** (`classify`). Au timeout on **sonde
   l'état réel** dans l'**ordre du flux** `ABSENT → STALE → HIDDEN → DISABLED → OUT_OF_BOUNDS →
   INTERCEPTED` (interception en dernier, via hit-test JS) et on remonte **toutes** les conditions en
@@ -203,7 +204,10 @@ aucune régression sur les artefacts. Détail complet : `plan-remediation.md`.
 - `interface DataFileManager` (contrat : `readRows`, `writeRows`, `getValue`).
 - `AbstractDataFileManager implements DataFileManager` (code commun : validation des colonnes,
   mapping en `List<Map<String, String>>`, gestion des en-têtes).
-- `ExcelFileReaderWriter` (Apache POI) et `CsvFileReaderWriter` (texte) en héritent.
+- `ExcelFileReaderWriter` (Apache POI) et `CsvFileReaderWriter` (texte) en héritent. Depuis la
+  réorganisation du 2026-10-17 (D15), `AbstractDataFileManager` est `sealed` et package-private (`permits`
+  les deux formats), les deux impls sont `final` et package-private : seule la factory `DataFiles` les
+  instancie.
   Suffixe `ReaderWriter` : le contrat couvre lecture **et** écriture, le nom l'assume
   (un simple `Reader` qui écrit serait trompeur).
 - Les tests dépendent de l'**interface**, pas de l'implémentation → bascule Excel↔CSV sans toucher au code.
@@ -329,8 +333,8 @@ Le Git flow est documenté en Markdown pour être consommable par l'agent.
     sur `SecretManager` (interface) + `CyberArkApiClient` (impl).
 - Bénéfice : remplacer CyberArk = nouvelle impl + 1 ligne d'injection, **zéro changement** dans les appelants.
 - Tests d'intégration manuels déjà faits → mécanisme connu comme fonctionnel ; reste à industrialiser proprement.
-- **Squelettes créés** : `SecretManager` (interface, `api.secret`) + `CyberArkApiClient` (impl,
-  `internal.secret`) + **`SecretManagers`** (factory publique, `api.secret`), cf. D15. Le consommateur
+- **Squelettes créés** : `SecretManager` (interface publique, package `secret`) + `CyberArkApiClient`
+  (impl package-private, même package) + **`SecretManagers`** (factory publique), cf. D15. Le consommateur
   obtient le manager via `SecretManagers.get()` (tenu une fois) puis `secrets.getSecret("…")` — il ne
   nomme jamais l'outil. Méthode **neutre** (`get()`, pas `cyberArk()`) : l'outil est de la config (D19).
 - **Aucune implémentation pour l'instant** (phase backlog / nommage).
@@ -367,7 +371,7 @@ que le contrat de sortie `KO__`, cf. D16) :
   assumé : suffisamment récente pour qu'il n'y ait **pas de rupture majeure** avec les versions 25/26,
   sans être la toute dernière. (Remplace l'estimation initiale ~18.4.)
 - **Squelettes créés** : `ReportingManager` + `AlmApiClient` + `TestExecutionReport` + `ExecutionStatus`,
-  tous en **`internal.reporting`** (cf. **Activation AUTO** ci-dessous) — remplacent la classe unique
+  tous **package-private** dans le package `reporting` (cf. **Activation AUTO** ci-dessous) — remplacent la classe unique
   `AlmReportingManager` qui mariait l'outil au concept. `ReportingManager` reste le **seam de swap**
   (ALM → autre), désormais interne.
 
@@ -377,7 +381,7 @@ La remontée est **automatique**, comme la capture d'échec : un **listener inte
 (`TestExecutionListener` JUnit, même mécanisme que `failure`) appelle `publishStart` au **début** et
 `publishEnd` à la **fin** de chaque test. **Le consommateur ne fait que** poser `@WithTag` + configurer
 `qa.alm.*` — **aucune ligne d'appel, aucune factory**. Conséquence : **tout le domaine reporting est
-`internal`** (aucun type public — cf. D15) ; le consommateur ne référence jamais `ReportingManager` /
+**package-private** (aucun type d'usage public — cf. D15) ; le consommateur ne référence jamais `ReportingManager` /
 `TestExecutionReport` / `ExecutionStatus`.
 
 **Résolution de l'ID ALM depuis `@WithTag` (lu par réflexion) :**
@@ -394,10 +398,10 @@ Signatures arrêtées lors de l'écriture des coquilles typées (étape 6).
 - `publishStart(String almTestId)` → appelé en **début de test** ; pousse le statut « In Progress » dans ALM.
 - `publishEnd(TestExecutionReport result)` → appelé en **fin de test** (quel que soit le résultat) ; pousse le statut final.
 
-`TestExecutionReport` est un **objet valeur neutre** (package `internal.reporting`) : `almTestId` (String) + `status` (ExecutionStatus).
+`TestExecutionReport` est un **objet valeur neutre** (package-private, package `reporting`) : `almTestId` (String) + `status` (ExecutionStatus).
 Conçu extensible : des champs complémentaires (durée, message d'erreur…) pourront être ajoutés sans rompre la signature de `publishEnd`.
 
-`ExecutionStatus` est une **enum maison** (package `internal.reporting`) : `IN_PROGRESS`, `PASSED`, `FAILED`.
+`ExecutionStatus` est une **enum maison** (package-private, package `reporting`) : `IN_PROGRESS`, `PASSED`, `FAILED`.
 
 #### Clé de maintenance
 
@@ -469,7 +473,7 @@ La classe avait été créée comme **façade SLF4J** pour porter trois besoins.
    `TestFailureManager` lit **directement** ces structures (même principe que la réutilisation de
    `WebElementFacade`). Pas de buffer maison.
 2. **Masquage des secrets** → **déplacé** : porté par **prévention à la source** via le type
-   `Secret` (`api.secret`, signatures posées ; masquage implémenté en étape 7) + application
+   `Secret` (package `secret`, signatures posées ; masquage implémenté en étape 7) + application
    du masquage par `TestFailureManager` à la sérialisation des `TestStep`. Plus besoin d'un point
    d'interception dans un logger.
 3. **Log d'action de synchro en live** (dernier rôle restant) → ne justifie **pas** une classe : une
@@ -478,97 +482,165 @@ La classe avait été créée comme **façade SLF4J** pour porter trois besoins.
 
 **Où vivent les éléments conservés** : le **namespace de log stable « qa »** (D17) et la **clé de
 niveau `qa.logger.level`** (défaut `WARN`, discret pour ne pas polluer Serenity) sont désormais portés
-par **`LogbackConfigurator`** (`internal.log`) et le `logback-socle.xml` — **valeurs par défaut au
+par **`LogbackConfigurator`** (package `log`) et le `logback-socle.xml` — **valeurs par défaut au
 socle, surchargeables par projet** via un `logback.xml` local (D16-bis). Aucune façade publique de log.
 
 > **Uniformité du format / console** : assurée par la config Logback partagée (`LogbackConfigurator`),
 > jamais par une classe maison. Sans les besoins initiaux (log d'action réglable + masquage), désormais
 > tous disparus, `QaLogger` n'a plus de raison d'être : on utilise **SLF4J directement**.
 
-## D15 — Convention de visibilité : packages `api` / `internal` (roadmap étape 1)
+## D15 — Convention de visibilité : un package par fonctionnalité, frontière portée par les modificateurs Java (roadmap étape 1)
 
 Frontière entre le **contrat public** (consommé par les ~17 projets) et l'**interne** (impls, moteurs).
 
+> **Réécrite le 2026-10-17** (branche `feature/package-by-feature`, avant la 1.0.0). La convention d'origine
+> séparait le code **par visibilité** (`com.example.qa.api.<domaine>` / `com.example.qa.internal.<domaine>`).
+> Or deux packages ne se voient qu'à travers des types `public` : tout ce qui vivait dans `internal`
+> **devait** être `public`, donc importable par un consommateur ; seule la convention (et un outil encore
+> à venir) protégeait la frontière. Le socle est désormais organisé **par fonctionnalité** : la façade et
+> ses implémentations vivent dans le **même package**, ce qui permet de rendre les implémentations
+> **package-private** — le **compilateur** interdit alors au consommateur de les référencer.
+
 ### Choix actés (arbitrage utilisateur)
 
-- **Mécanisme** : deux sous-arbres `com.example.qa.api.<domaine>` et `com.example.qa.internal.<domaine>`.
-  Frontière **contrôlée par outil** (japicmp pour le périmètre — roadmap étape 10 ; ArchUnit possible
-  pour interdire les imports `internal` côté test). **Pas de JPMS** : `internal` reste techniquement
-  accessible (les 17 projets et Serenity/Selenium ne sont pas modulaires), c'est la convention + l'outil
-  qui isolent, sans rien imposer au classpath des consommateurs.
-- **Extension** : les consommateurs **utilisent** surtout ; l'extension est rare et encadrée. Donc les
-  classes `Abstract*` et les moteurs **ne sont PAS du SPI public** → `internal`.
+- **Mécanisme** : un package par fonctionnalité, `com.example.qa.<fonctionnalité>` (`sync`, `page`, `data`,
+  `secret`, `reporting`, `failure`, `log`), plus la **racine** `com.example.qa` pour `QaToolkitException`.
+  Il n'y a **plus** de niveau `api` / `internal` : la frontière public / interne est portée par les
+  **modificateurs Java** (`public`, package-private, `final`, `sealed`), pas par le nom du package.
+- **Pas de JPMS** : les 17 projets et Serenity/Selenium ne sont pas modulaires, et un `module-info` serait
+  ignoré sur le classpath (Surefire). La protection repose donc sur le compilateur (modificateurs), complétée
+  par des outils (japicmp pour le périmètre contractuel — roadmap étape 10 ; ArchUnit possible).
+- **Extension** : les consommateurs **utilisent** surtout ; l'extension est rare et encadrée. Les classes
+  `Abstract*` et les moteurs **ne sont PAS du SPI public** → package-private.
 - **Implémentations** : **cachées derrière une factory** quand un point d'entrée public est nécessaire
-  (`DataFiles` existe déjà pour `data` ; `secret`/`reporting` restent à confirmer à l'étape 6). Le
-  consommateur dépend des **interfaces** (`api`), jamais des impls concrètes (`internal`).
-- **Nommage** : `api` + `internal` uniquement (pas de package `spi`, puisque l'extension n'est pas un
-  cas d'usage de premier plan).
+  (`DataFiles` pour `data`, `SecretManagers` pour `secret`). Le consommateur dépend des **interfaces** et
+  des **façades**, jamais des impls concrètes.
+- **Nommage** : pas de package `spi`, ni `api`, ni `internal`. Le nom d'un package dit **ce qu'il fait**.
+- **Exceptions réparties par fonctionnalité** (`SyncException` dans `sync`, `SecretException` dans `secret`,
+  etc.), la racine `QaToolkitException` à la racine `com.example.qa` : c'est ce qui permet de rendre les
+  **constructeurs des sous-types package-private** (cf. D18).
+- **Soft-assert fusionné dans `sync`** : `SoftAssertions` et `SoftAssertionExtension` rejoignent `sync`
+  (seuls les `should…` de la synchro alimentent le collecteur), ce qui rend `SoftAssertions`
+  package-private. Aucune solution existante ne remplace cette implémentation (cf. D22-bis).
 
-### Classement des types (existants et planifiés)
+### Grille de visibilité (règle appliquée à chaque type)
 
-| Type | Package | Pourquoi |
+| Cas | Modificateurs | Exemples |
 |---|---|---|
-| `WebSync`, `MobileSync` | `api.sync` | types **déclarés** dans les PageObjects consommateurs (`private final WebSync`) |
-| `QaPageObject` | `api.page` | **classe de base des PageObjects consommateurs** (2026-08-03) : étend `PageObject` (Serenity) et expose `web` (profil `MEDIUM`) + `web(SyncTimeout)`. Type **explicitement destiné à l'héritage** par le consommateur — seule exception à « pas d'extension prévue » (cf. ci-dessous) |
-| `DataFileManager` | `api.data` | interface = contrat |
-| `SecretManager` | `api.secret` | interface = contrat |
-| `SecretManagers` | `api.secret` | **factory publique** : seul accès au `SecretManager`, cache `CyberArkApiClient` (idiome JDK `Executors`) |
-| `ReportingManager`, `TestExecutionReport`, `ExecutionStatus` | `internal.reporting` | reporting **AUTO** (listener du socle) → **aucun type public** ; `ReportingManager` reste le **seam de swap** interne (D13) |
-| `Secret` | `api.secret` | type « valeur sensible » manipulé par le consommateur ; **masquage implémenté** (étape 7, format D12, `SecretMaskingTest`) |
-| `QaToolkitException` + `SyncException` / `DataFileException` / `SecretException` / `ReportingException` | `api.exception` | hiérarchie d'erreurs **publique** (contrat), unchecked — cf. D18 ; dans le périmètre japicmp (étape 10) |
-| `AbstractSyncManager` | `internal.sync` | moteur, extension non prévue |
-| `AbstractDataFileManager` | `internal.data` | code commun interne |
-| `ExcelFileReaderWriter`, `CsvFileReaderWriter` | `internal.data` | impls, instanciées via factory (étape 6) |
-| `CyberArkApiClient` | `internal.secret` | impl cachée derrière `SecretManager` |
-| `AlmApiClient` | `internal.reporting` | impl cachée derrière `ReportingManager` |
-| `TestFailureManager` | `internal.failure` | moteur activé par un **hook natif auto-découvert** (cf. D16) ; **aucun type public, aucune annotation**, jamais référencé par le consommateur |
-| `RawDomCaptureListener` | `internal.failure` | `StepListener` Serenity auto-découvert (cf. D16) qui capte le **DOM brut** à l'échec ; **aucun type public**, jamais référencé par le consommateur |
-| `SoftAssertions` | `internal.assertion` | collecteur `ThreadLocal` du soft-assert + point d'entrée `check()` des `should…` (cf. D22-bis) ; **aucun type public** |
-| `SoftAssertionExtension` | `internal.assertion` | extension Jupiter auto-découverte (`AfterTestExecutionCallback`, cf. D22-bis) qui draine le collecteur et **fait échouer** le test en mode soft ; **aucun type public** |
-| `LogbackConfigurator` *(à venir, étape 6/8)* | `internal.log` | mécanisme Logback **auto-activé** (ServiceLoader), **aucun type public**, jamais référencé par le consommateur (cf. D16-bis) |
+| Contrat manipulé par le consommateur (façade, interface, valeur, factory, énum de paramètre, classe de base à hériter) | `public` | `WebSync`, `DataFileManager`, `DataFiles`, `Secret`, `SyncTimeout`, `QaPageObject` |
+| Implémentation, moteur, code commun, énumération de diagnostic | **package-private** (+ `final` quand aucune extension n'est prévue) | `AbstractSyncManager`, `SyncCondition`, `CyberArkApiClient`, `AlmApiClient`, `CsvFileReaderWriter` |
+| Classe chargée par **ServiceLoader** (listener, extension, `Configurator`) | `public final` — ServiceLoader exige une classe `public` à constructeur public sans argument ; `final` + membres utilitaires package-private la rendent inexploitable | `TestFailureManager`, `RawDomCaptureListener`, `SoftAssertionExtension`, `LogbackConfigurator` |
+| Exception de domaine | `public final`, constructeurs **package-private** : le consommateur l'**attrape**, seul le socle la **lève** | `SyncException`, `DataFileException`, `SecretException`, `ReportingException` |
+| Racine d'exceptions | `public abstract`, constructeurs `protected` | `QaToolkitException` |
+| Hiérarchie fermée interne | `sealed … permits` (voir ci-dessous) | `AbstractDataFileManager` |
+
+**Où `sealed` et où pas.** Hors module nommé (JPMS), `sealed` impose que toutes les sous-classes autorisées
+soient dans **le même package** que leur parent. Conséquences actées :
+
+- **`AbstractDataFileManager` est `sealed … permits CsvFileReaderWriter, ExcelFileReaderWriter`** : tout est
+  package-private et le compilateur garantit qu'il n'existe que ces deux formats ; en ajouter un = une
+  ligne dans `permits`.
+- **`AbstractSyncManager` n'est pas `sealed`** : son verrouillage est déjà assuré par le package-private, et
+  `sealed` obligerait `WebSync` et `MobileSync` (publics, sous-classables pour le bris de glace) à porter
+  `non-sealed` dans l'API publique.
+- **Les interfaces publiques (`DataFileManager`, `SecretManager`) ne sont pas `sealed`** : le consommateur
+  doit pouvoir écrire une doublure (mock ou faux `SecretManager`) pour tester sans CyberArk.
+- **`QaToolkitException` n'est pas `sealed`** : ses sous-types sont répartis dans leurs fonctionnalités.
+
+### Classement des types
+
+| Type | Package | Visibilité | Pourquoi |
+|---|---|---|---|
+| `QaToolkitException` | `com.example.qa` (racine) | `public abstract`, constructeurs `protected` | racine de la hiérarchie d'erreurs (D18) : un seul `catch` l'attrape ; le consommateur ne l'instancie ni ne la lève |
+| `WebSync`, `MobileSync` | `sync` | `public` (non-`final`) | types **déclarés** dans les PageObjects consommateurs ; sous-classables (bris de glace, ci-dessous) |
+| `SwipeDirection`, `SyncTimeout` | `sync` | `public enum` | types de paramètre et profils de timeout |
+| `SyncException` | `sync` | `public final`, constructeurs package-private | erreur de synchro attrapable, levée par le seul socle |
+| `AbstractSyncManager` | `sync` | package-private `abstract` | moteur commun ; ses méthodes **publiques** sont héritées par `WebSync`/`MobileSync` (exception explicite, ci-dessous) |
+| `SyncCondition` | `sync` | package-private `enum` | diagnostic actif au timeout |
+| `SoftAssertions` | `sync` | package-private `final` | collecteur `ThreadLocal` + point d'entrée `check()` des `should…` (cf. D22-bis) |
+| `SoftAssertionExtension` | `sync` | `public final` | extension Jupiter auto-découverte (`AfterTestExecutionCallback`, cf. D22-bis) qui draine le collecteur et **fait échouer** le test en mode soft ; jamais référencée par le consommateur |
+| `QaPageObject` | `page` | `public abstract` | **classe de base des PageObjects consommateurs** (2026-08-03) : étend `PageObject` (Serenity), expose `web` (profil `MEDIUM`) + `web(SyncTimeout)`. Type **explicitement destiné à l'héritage** — seule exception à « pas d'extension prévue » (cf. ci-dessous) |
+| `DataFileManager` | `data` | `public interface` | contrat |
+| `DataFiles` | `data` | `public final` | **factory publique** : seul accès aux impls |
+| `DataFileException` | `data` | `public final`, constructeurs package-private | |
+| `AbstractDataFileManager` | `data` | package-private `abstract sealed` | code commun ; permits `CsvFileReaderWriter`, `ExcelFileReaderWriter` |
+| `ExcelFileReaderWriter`, `CsvFileReaderWriter` | `data` | package-private `final` | impls, instanciées par `DataFiles` uniquement |
+| `SecretManager` | `secret` | `public interface` | contrat |
+| `SecretManagers` | `secret` | `public final` | **factory publique** : seul accès au `SecretManager`, cache `CyberArkApiClient` (idiome JDK `Executors`) |
+| `Secret` | `secret` | `public final` | type « valeur sensible » manipulé par le consommateur ; **masquage implémenté** (étape 7, format D12, `SecretMaskingTest`) |
+| `SecretException` | `secret` | `public final`, constructeurs package-private | |
+| `CyberArkApiClient` | `secret` | package-private `final` | impl cachée derrière `SecretManager` |
+| `ReportingManager`, `TestExecutionReport`, `ExecutionStatus` | `reporting` | package-private | reporting **AUTO** (listener du socle) → **aucun type d'usage public** ; `ReportingManager` reste le **seam de swap** interne (D13) |
+| `AlmApiClient` | `reporting` | package-private `final` | impl cachée derrière `ReportingManager` |
+| `ReportingException` | `reporting` | `public final`, constructeurs package-private | |
+| `TestFailureManager` | `failure` | `public final` | moteur activé par un **hook natif auto-découvert** (cf. D16) ; **aucune annotation**, jamais référencé par le consommateur ; clés de config et `writeArtefacts` package-private |
+| `RawDomCaptureListener` | `failure` | `public final` | `StepListener` Serenity auto-découvert (cf. D16) qui capte le **DOM brut** à l'échec ; jamais référencé par le consommateur |
+| `LogbackConfigurator` | `log` | `public final` | mécanisme Logback **auto-activé** (ServiceLoader), jamais référencé par le consommateur (cf. D16-bis) ; constantes package-private |
 
 ### Conséquences
 
-- **Factories publiques** (`api`) — **tranché étape 6** : `DataFiles` pour `data` ; **`SecretManagers`**
-  pour `secret` (créée — seul accès au `SecretManager`, cache CyberArk). **Pas de factory `reporting`** :
-  le reporting est **AUTO** (listener du socle, cf. D13) → tout le domaine reporting est `internal`, le
-  consommateur ne l'instancie jamais.
-- Pour `failure` **et `reporting`** : **ni factory ni type public**. Activation **native** (listener
-  `TestExecutionListener` JUnit), invisible du consommateur — cf. **D16** (failure) et **D13** (reporting).
-- `WebSync`/`MobileSync` (`api`) étendent `AbstractSyncManager` (`internal`) : dépendance
-  `api → internal` **interne au socle**, invisible du consommateur (il ne voit que `WebSync`).
-- Le périmètre `api` = exactement ce que japicmp surveillera (étape 10).
+- **Factories publiques** — **tranché étape 6** : `DataFiles` pour `data` ; **`SecretManagers`** pour
+  `secret`. **Pas de factory `reporting`** : le reporting est **AUTO** (listener du socle, cf. D13) → tous
+  ses types sont package-private, le consommateur ne l'instancie jamais.
+- Pour `failure`, `log` **et `reporting`** : **ni factory ni type d'usage**. Activation **native**
+  (ServiceLoader), invisible du consommateur — cf. **D16** (failure), **D16-bis** (log) et **D13** (reporting).
+- `WebSync`/`MobileSync` étendent `AbstractSyncManager` (même package) : le consommateur ne voit que
+  `WebSync`.
+- **Le compilateur fait respecter la frontière** : importer `CyberArkApiClient`, `CsvFileReaderWriter`,
+  `AbstractSyncManager`, `SoftAssertions` ou `ReportingManager` est une **erreur de compilation** côté
+  consommateur (« is not public in … ; cannot be accessed from outside package »), de même que
+  `new SyncException(…)`. Vérifié le 2026-10-17 sur une classe de test placée dans un package tiers.
+- **Limites assumées** (cf. **PA-18**, **PA-19**) : le package-private est une protection du
+  **compilateur**, non du runtime — un consommateur qui crée **délibérément** une classe dans le package
+  `com.example.qa.sync` (split package sur le classpath) ou recourt à la réflexion peut la contourner.
+  L'objectif — l'empêcher d'utiliser une implémentation **par inadvertance** (autocomplétion, import
+  automatique) et le **forcer** vers la façade — est atteint. Un durcissement existe si besoin (jar
+  scellé, `Sealed: true` dans le manifeste), non décidé.
+- Le périmètre contractuel = les types `public` du socle (hors classes ServiceLoader) : c'est ce que
+  japicmp surveillera (étape 10).
 
-### Frontière `sync` : moteur interne + surface gelée + échappatoire (acté étape 6 — option A)
+### Frontière `sync` : moteur package-private + surface gelée + échappatoire (acté étape 6 — option A, révisé 2026-10-17)
 
-`WebSync`/`MobileSync` (`api`) héritent **toute** leur surface commune (actions/lectures/états/attentes
-par `By`) d'`AbstractSyncManager` (`internal`). Choix retenu (option A, après arbitrage) :
+`WebSync`/`MobileSync` héritent **toute** leur surface commune (actions/lectures/états/attentes par `By`)
+d'`AbstractSyncManager`. Choix retenu (option A, après arbitrage) :
 
-- **`AbstractSyncManager` reste `internal`** — pas de déplacement en `api`, pas d'interface publique de
-  surface commune. Justifié par : **pas d'extension prévue** côté consommateur (utilisation seule) et
-  **pas de besoin de type commun** web/mobile (PageObjects séparés par plateforme, état de l'art).
-  L'option B (moteur en `api`) exposerait inutilement le moteur ; l'option C (interface ~60 méthodes)
-  ajouterait une surface à maintenir en double, sans bénéfice ici.
-- **Mais ses méthodes publiques font partie du contrat gelé** : le **garde-fou japicmp (étape 10) est
-  élargi** pour couvrir la surface publique héritée par `WebSync`/`MobileSync`. **Exception explicite à
-  « `internal` = libre de changer »** : les méthodes publiques du moteur ne sont **pas** libres (leur
-  retrait/modification casserait les 17 projets).
+- **`AbstractSyncManager` reste un moteur caché** — pas d'interface publique de surface commune.
+  Justifié par : **pas d'extension prévue** côté consommateur (utilisation seule) et **pas de besoin de type
+  commun** web/mobile (PageObjects séparés par plateforme, état de l'art). L'option B (moteur public)
+  exposerait inutilement le moteur ; l'option C (interface ~60 méthodes) ajouterait une surface à maintenir
+  en double, sans bénéfice ici. Depuis la réorganisation, il est **package-private** : le consommateur ne
+  peut plus le nommer.
+- **Ses méthodes publiques font partie du contrat gelé** : leur retrait ou modification casserait les 17
+  projets. C'est une **exception explicite à « package-private = libre de changer »** pour ces seules
+  méthodes. Conséquence mécanique : comme le parent n'est pas `public`, javac génère dans `WebSync.class`
+  et `MobileSync.class` une **méthode de pont publique (synthétique)** pour chaque méthode publique
+  héritée (vérifié sur `click`) — ces méthodes **deviennent donc visibles** dans les class files des
+  façades (cf. C7, ci-dessous).
+- **Membres `protected` du moteur retirés** (arbitrage 2026-10-17) : `fluentWait`, `query`, `act`,
+  `actRaw`, `currentDriver`, `tryAssert` et les constructeurs `AbstractSyncManager(…)` /
+  `WebSync(AbstractSyncManager, By)` / `MobileSync(AbstractSyncManager, By)` passent en package-private.
+  Ils manipulent `WebElementFacade` / `WebElement` : les laisser `protected` exposait ces types Selenium /
+  Serenity à toute sous-classe consommatrice (fuite du no-leak, D3) et les faisait entrer dans le contrat
+  gelé.
 - **Échappatoire « bris de glace »** : `WebSync`/`MobileSync` restent **sous-classables** et leurs
-  méthodes **non-`final`** (cohérent avec D19, qui n'impose `final` que sur les **champs**, pas sur les
-  méthodes/classes). En cas de bug bloquant de synchro, un projet surcharge la méthode fautive dans une
-  sous-classe, puis le correctif stable est **promu dans le socle** (changement de corps = non-breaking).
-  Le **mode opératoire** (sous-classe nommée + point d'instanciation unique) est documenté dans le
-  **Javadoc de `WebSync`/`MobileSync`**, pas ici.
+  méthodes **non-`final`** (cohérent avec D19, qui n'impose `final` que sur les **champs**). En cas de bug
+  bloquant de synchro, un projet **surcharge la méthode publique fautive** dans une sous-classe (en
+  s'appuyant sur `super.xxx()` et les autres méthodes publiques), puis le correctif stable est **promu dans
+  le socle** (changement de corps = non-breaking). Le **mode opératoire** (sous-classe nommée + point
+  d'instanciation unique) est documenté dans le **Javadoc de `WebSync`/`MobileSync`**, pas ici.
+  **Limites** (cf. **PA-19**) : la sous-classe ne peut plus réutiliser le moteur (`fluentWait`…), et la vue
+  renvoyée par `within(By)` est une instance **de base** (`WebSync` / `MobileSync`) : la surcharge ne s'y
+  propage pas, faute de constructeur accessible.
 
 ### `QaPageObject` — classe de base publique destinée à l'héritage (2026-08-03)
 
-Ajout d'un domaine **`api.page`** portant un unique type, `QaPageObject`, dont les projets consommateurs
+Ajout d'un domaine **`page`** portant un unique type, `QaPageObject`, dont les projets consommateurs
 **héritent** pour leurs Page Objects. Il expose le champ `web` (profil `MEDIUM`) et la méthode
 `web(SyncTimeout)`.
 
 - **Exception assumée à « l'extension n'est pas un cas d'usage de premier plan »** : ici l'héritage **est**
   le mode d'emploi. Elle ne contredit pas la règle — celle-ci visait les **moteurs** (`Abstract*`), qui
-  restent `internal` et non extensibles.
+  restent package-private et non extensibles.
 - **Aucun héritage perdu** : les Page Objects étendent **déjà** `PageObject` (Serenity) ; on substitue
   simplement la classe de base. `QaPageObject` en hérite, donc navigation (`open()`, `@DefaultUrl`) et
   outillage Serenity restent disponibles à l'identique.
@@ -587,19 +659,29 @@ Ajout d'un domaine **`api.page`** portant un unique type, `QaPageObject`, dont l
 - **Conséquence contrat** : type **public** → entre dans le périmètre gelé et japicmp (étape 10). Ajout
   non-breaking, décidé **avant** la 1.0.0 pour ne pas élargir l'API après release.
 
-### Mise à jour (revue externe 2026-07-07) — mécanique du japicmp « élargi » (C7)
+### Mise à jour (revue externe 2026-07-07, révisée 2026-10-17) — mécanique du japicmp « élargi » (C7)
 
-Le garde-fou « élargi » ci-dessus a un **piège mécanique** : japicmp compare des **class files**, et les
-méthodes héritées **n'apparaissent pas** dans `WebSync.class`/`MobileSync.class`. Un filtre d'inclusion
-`api.*` (le réglage naturel vu D15) rendrait donc **invisible** un retrait de méthode publique dans
-`internal.sync.AbstractSyncManager` — tout en cassant les 17 projets. Conséquence actée pour l'étape 10 :
-le périmètre japicmp est défini soit en incluant **explicitement `AbstractSyncManager`** en plus de
-`api.*`, soit par **annotation** (`@PublicApi` maison posée sur les types du contrat, filtrage japicmp par
-annotation). Jamais par simple filtre de package.
+Le garde-fou « élargi » ci-dessus avait un **piège mécanique** : japicmp compare des **class files**, et
+les méthodes héritées **n'apparaissaient pas** dans `WebSync.class`/`MobileSync.class`. Avec l'ancienne
+organisation (moteur dans un package `internal` mais `public`), un filtre d'inclusion `api.*` rendait donc
+**invisible** un retrait de méthode publique dans `AbstractSyncManager` — tout en cassant les 17 projets.
+
+**La réorganisation change la donne** : le moteur étant package-private, javac recopie ses méthodes
+publiques dans `WebSync.class` / `MobileSync.class` sous forme de méthodes de pont **synthétiques**
+(cf. ci-dessus). Un retrait dans le moteur devient donc visible dans les class files des façades.
+Conséquence actée pour l'étape 10 :
+
+- le périmètre japicmp est défini **sur les types publics du socle** (et non sur un filtre de nom de
+  package) ;
+- japicmp **exclut par défaut les membres synthétiques** : il faut activer l'option `includeSynthetic` du
+  plugin, et **valider sur un cas réel** (retrait volontaire d'une méthode publique d'`AbstractSyncManager`
+  → le build doit échouer) avant de s'y fier ;
+- repli si la validation échoue : inclure **explicitement** `AbstractSyncManager` dans le périmètre, ou
+  filtrer par **annotation** (`@PublicApi` maison posée sur les types du contrat).
 
 ## D16 — Capture d'échec : activation native + artefacts écrits par le socle (roadmap étape 6)
 
-Comment `TestFailureManager` (package `internal.failure`) est **déclenché**, **qui porte quelle
+Comment `TestFailureManager` (package `failure`) est **déclenché**, **qui porte quelle
 part de la mécanique**, et **comment le consommateur le règle**. **Implémenté** (étape 8) : activation
 native + écriture des 3 fichiers depuis le `TestOutcome` Serenity + **capture du DOM brut** à l'échec
 (cf. sous-sections ci-dessous, mises à jour au fil de l'implémentation).
@@ -608,7 +690,7 @@ native + écriture des 3 fichiers depuis le `TestOutcome` Serenity + **capture d
 
 - Le hook s'active par la **seule présence du jar** `qa-socle` au classpath, via le **ServiceLoader de
   JUnit Platform** : le jar livre un `META-INF/services/org.junit.platform.launcher.TestExecutionListener`
-  déclarant **`TestFailureManager`** (`internal.failure`), qui **implémente lui-même**
+  déclarant **`TestFailureManager`** (package `failure`), qui **implémente lui-même**
   `TestExecutionListener` (hook + écriture en une seule classe simple). Le `Launcher` JUnit
   auto-enregistre ce listener — c'est le moteur que **Surefire** lance à chaque `mvn test`/`verify`
   (local et CI), et c'est exactement ainsi que **serenity-junit5** s'active lui-même.
@@ -619,7 +701,7 @@ native + écriture des 3 fichiers depuis le `TestOutcome` Serenity + **capture d
     services sont ainsi auto-découverts par la présence du jar `qa-socle` : le `TestExecutionListener`
     **JUnit Platform** (`TestFailureManager`, qui écrit les artefacts dans `executionFinished`) **et** le
     `StepListener` **Serenity** (`RawDomCaptureListener`, qui capte le DOM brut à l'échec — cf. sous-section
-    « Source du dump HTML » ci-dessous). Les deux restent `internal`, sans annotation ni import côté
+    « Source du dump HTML » ci-dessous). Les deux restent invisibles du consommateur (classes `public final` imposées par ServiceLoader, membres utilitaires package-private), sans annotation ni import côté
     consommateur.
   - À la fin d'un test (`executionFinished`), `TestFailureManager` lit le résultat et, **uniquement en cas d'échec**,
     récupère le `TestOutcome` Serenity
@@ -631,7 +713,7 @@ native + écriture des 3 fichiers depuis le `TestOutcome` Serenity + **capture d
   annotation **oubliée** dans un projet ne produirait **aucun artefact, sans erreur** → personne ne
   comprendrait l'absence des fichiers de sortie. L'activation automatique supprime ce piège.
 - Conséquence : **aucun type public**, **aucune annotation**, **aucun `import`** côté consommateur.
-  `TestFailureManager` et son listener restent entièrement `internal` (cohérent avec D15).
+  `TestFailureManager` et son listener sont des classes `public final` (ServiceLoader l'impose) jamais référencées par le consommateur (cohérent avec D15).
 
 ### Source du dump HTML : DOM brut capté à l'échec (capture « option A »)
 
@@ -645,7 +727,7 @@ native + écriture des 3 fichiers depuis le `TestOutcome` Serenity + **capture d
 - **Choix retenu — option A (DOM brut, recommandée)** : capter `driver.getPageSource()` **au moment précis
   de l'échec de la step** (`stepFailed`), tant que le **driver est encore vivant** — il l'est pendant
   l'exécution, plus forcément dans `executionFinished`. Porté par **`RawDomCaptureListener`** (un
-  `StepListener` Serenity, `internal.failure`), qui mémorise le DOM dans un `ThreadLocal<String>` (un par
+  `StepListener` Serenity, package `failure`), qui mémorise le DOM dans un `ThreadLocal<String>` (un par
   thread de test → sûr en parallèle). `TestFailureManager`, dans `executionFinished` (même thread, D22-bis),
   **consomme** cette valeur via `consumeCapturedDom()` (lecture + purge, pas de fuite inter-tests).
 - **Repli — option C** : si aucun DOM brut n'a été capté (driver absent/fermé, capture en échec), on
@@ -814,7 +896,7 @@ Si un projet doit rester sur une ancienne version du socle : simple non-merge de
 > implémenter** le type Logback `ch.qos.logback.classic.spi.Configurator` → le socle a besoin de Logback
 > **au compile**, ce que `runtime` interdit. **Choix retenu : `compile`** (POM simple, 1 ligne). La règle
 > « ne pas coder contre le binding » n'est plus assurée par l'**absence** de Logback au compile, mais par
-> une **règle ArchUnit** (cf. **D19/α**) : *aucune classe hors `internal.log` ne dépend de
+> une **règle ArchUnit** (cf. **D19/α**) : *aucune classe hors `com.example.qa.log` ne dépend de
 > `ch.qos.logback..`* → **échoue le build** en cas de violation. Garde-fou **plus robuste** (il attrape
 > l'usage quelle que soit la façon dont Logback arrive au classpath) et **POM plus simple** que l'option
 > `provided` + Parent. Application : étape 8 (avec l'implémentation du `Configurator`).
@@ -855,13 +937,13 @@ l'activation native de `TestFailureManager` (D16).
 
 **Mécanisme retenu — Logback `Configurator` (ServiceLoader)** :
 
-- Le socle livre **`LogbackConfigurator`** (package **`internal.log`** — mécanisme caché, **aucun
+- Le socle livre **`LogbackConfigurator`** (package **`log`** — mécanisme caché, constantes package-private, **aucun
   type public**, cf. D15 ; il n'y a **pas** de façade de log publique, `QaLogger` ayant été supprimée)
   implémentant `ch.qos.logback.classic.spi.Configurator`, déclarée dans
   `META-INF/services/ch.qos.logback.classic.spi.Configurator` (interne au jar). Elle **charge
   `logback-socle.xml`** (livré dans le jar) → la config reste en **XML lisible**, pas codée en Java.
   Il porte aussi les constantes du **namespace « qa »** et de la **clé `qa.logger.level`** (défaut
-  `WARN`). Nom **sans préfixe `Qa`** : un mécanisme `internal` jamais importé n'en a pas besoin, et
+  `WARN`). Nom **sans préfixe `Qa`** : un mécanisme interne jamais importé n'en a pas besoin, et
   `LogbackConfigurator` dit exactement son rôle.
 - Ordre de résolution Logback : `logback-test.xml` → `logback.xml` → **`Configurator` du socle** →
   défaut nu. Le Configurator n'agit donc **que** si le projet n'a aucun `logback.xml` local.
@@ -939,9 +1021,10 @@ resources ne changent jamais à l'adoption**.
   en Javadoc**, jamais dans la signature. *(Correctif : les `throws SyncException` / `throws
   DataFileException` qui subsistaient sur `sync` et `data` ont été retirés pour cet alignement ; les
   imports d'exception devenus inutiles ont été supprimés.)*
-- **Racine concrète `QaToolkitException`** (package `api.exception`) : un seul `catch` attrape toute
-  erreur d'origine socle (clé pour l'outillage de maintenance, D9). Concrète → levable directement
-  pour une erreur transverse ne relevant d'aucun domaine.
+- **Racine abstraite `QaToolkitException`** (package racine `com.example.qa`) : un seul `catch` attrape
+  toute erreur d'origine socle (clé pour l'outillage de maintenance, D9). Abstraite, constructeurs
+  `protected` (réorganisation du 2026-10-17, D15) : le consommateur l'attrape, il ne l'instancie ni ne la
+  lève — toute erreur est levée par un sous-type de domaine.
 - **4 sous-types par domaine** : `SyncException`, `DataFileException`, `SecretException`,
   `ReportingException`. **Pas de sous-types par *nature*** d'erreur (jamais `DataFileNotFoundException`…) :
   la nature précise voyage dans le **message + la `cause`**, pas dans le type.
@@ -963,9 +1046,12 @@ resources ne changent jamais à l'adoption**.
   le **message différencié** (« mauvaise page / page non chargée » si `NoSuchElementException` ;
   « application instable » si `ElementNotInteractableException`/`ElementClickInterceptedException`), qui
   alimente `TestFailureManager` et l'auto-fix (D9).
-- **Capture d'échec** (`TestFailureManager`, `internal`) : aucune exception publique nécessaire.
-- **Écrites** : `QaToolkitException` + 4 sous-types en `api.exception` (+ `ExceptionHierarchyTest`),
-  build vert. Constructeurs `(String)` et `(String, Throwable)` (le second porte la traduction).
+- **Capture d'échec** (`TestFailureManager`, package `failure`) : aucune exception publique nécessaire.
+- **Écrites** : `QaToolkitException` à la racine + un sous-type par fonctionnalité, rangé dans son package
+  (`sync`, `data`, `secret`, `reporting`), `final`. Tests : `ExceptionHierarchyTest` (racine) + un
+  `*ExceptionTest` par sous-type, dans son package. Build vert. Constructeurs `(String)` et
+  `(String, Throwable)` (le second porte la traduction) : **package-private** pour les sous-types (seul le
+  socle les lève), `protected` pour la racine.
 
 ---
 
@@ -1019,7 +1105,7 @@ du fichier** (peu importe lequel le consommateur utilise).
 - Règle **ArchUnit** (« pas de champ `static` non-`final` ») à **intégrer au jar `qa-socle`** (ArchUnit en
   scope `compile`, **cohérent avec JUnit déjà en `compile`** → **un seul artefact**, pas de 2ᵉ jar).
 - Règle **ArchUnit complémentaire — interdiction de coder contre le binding Logback** (cf. **D16-bis**) :
-  *aucune classe hors `com.example.qa.internal.log` ne doit dépendre de `ch.qos.logback..`* — le
+  *aucune classe hors `com.example.qa.log` ne doit dépendre de `ch.qos.logback..`* — le
   consommateur passe par **SLF4J**, jamais par Logback directement. Échoue le build en cas de violation.
   Remplace l'isolation par scope (Logback est en `compile`) par un garde-fou explicite, plus robuste.
 - **NB (à spécifier étape 8) — clé d'activation par règle** : chaque règle ArchUnit doit exposer **sa
@@ -1124,7 +1210,7 @@ coup), au lieu de tomber sur la première.
   vérification cassée à la CI).
 - **Infrastructure implémentée le 2026-07-12** (mécanisme tranché en D22-bis, extension
   `AfterTestExecutionCallback` auto-détectée) : classes `SoftAssertions` (collecteur + `check()`) et
-  `SoftAssertionExtension` (`internal.assertion`), fichier
+  `SoftAssertionExtension` (rangées dans le package `sync` depuis le 2026-10-17, cf. D15), fichier
   `META-INF/services/org.junit.jupiter.api.extension.Extension`, autodetection activée dans le Parent
   POM — activation **prouvée empiriquement** (un soft-fail non drainé fait échouer le test via
   l'extension). Contrainte tenue : **zéro ligne** côté code de test (bascule par la seule clé). Reste
@@ -1153,8 +1239,8 @@ Deux étages JUnit, deux rôles distincts, **aucune dépendance ajoutée** (`jun
 | Acteur | Couche / point d'entrée | Rôle | Activation |
 |---|---|---|---|
 | `should…` (mode soft) | corps du test | **enregistre** l'échec au lieu de lever, puis continue | clé `qa.assertions.soft` |
-| Collecteur `ThreadLocal<List<AssertionError>>` (`internal`) | — | accumule les échecs soft du test courant | — |
-| **Extension** `AfterTestExecutionCallback` (`internal`) | **moteur Jupiter**, juste après le corps, **avant** le scellé du verdict | **draine** le collecteur ; si non vide, **lève** l'agrégat (test KO) ; **vide** le `ThreadLocal` | `META-INF/services/org.junit.jupiter.api.extension.Extension` + `junit.jupiter.extensions.autodetection.enabled=true` (Parent POM, hérité → zéro ligne côté test) |
+| Collecteur `ThreadLocal<List<AssertionError>>` (`SoftAssertions`, package-private, `sync`) | — | accumule les échecs soft du test courant | — |
+| **Extension** `AfterTestExecutionCallback` (`SoftAssertionExtension`, `public final`, `sync`) | **moteur Jupiter**, juste après le corps, **avant** le scellé du verdict | **draine** le collecteur ; si non vide, **lève** l'agrégat (test KO) ; **vide** le `ThreadLocal` | `META-INF/services/org.junit.jupiter.api.extension.Extension` + `junit.jupiter.extensions.autodetection.enabled=true` (Parent POM, hérité → zéro ligne côté test) |
 | `TestFailureManager` (`TestExecutionListener`) | **plateforme**, après le scellé | **observe** le test KO et **écrit** les 3 fichiers `KO__` | déjà en place (présence du jar) |
 
 - **Coopération** : l'extension **crée** le verdict (échec), le listener **écrit** les artefacts — chacun à
@@ -1180,7 +1266,7 @@ de D16 est **clos**.
 
 - **Aucune nouvelle signature publique, aucun impact sur le gel d'API** (mécanique d'étape 8).
 - Implémentation en deux temps : **infrastructure livrée le 2026-07-12** (2 petites classes
-  `internal.assertion` — `SoftAssertions` + `SoftAssertionExtension` — + 1 fichier service + 1 paramètre
+  `SoftAssertions` + `SoftAssertionExtension`, aujourd'hui dans `sync` — + 1 fichier service + 1 paramètre
   Surefire dans le Parent POM) ; le **branchement des `should…`** suit avec l'implémentation SYNC.
 
 ### Mise à jour (revue externe 2026-07-07) — validation empirique ≠ contrat (C11)
@@ -1194,3 +1280,22 @@ Conséquences actées :
 - la validation C2 (séquentiel + parallèle) est **rejouée à chaque bump** de `junit.jupiter.version` —
   test de non-régression parallèle dédié dans le socle, versions restant épinglées par le Parent POM
   (D6-bis) donc le risque est contrôlé, jamais subi.
+
+### Mise à jour (2026-10-17) — rangement dans `sync` et solutions existantes écartées
+
+Dans la réorganisation par fonctionnalité (D15), `SoftAssertions` et `SoftAssertionExtension` rejoignent le
+package **`sync`** : seuls les `should…` de `WebSync`/`MobileSync` alimentent le collecteur, ce qui permet
+de rendre `SoftAssertions` **package-private** (le consommateur ne peut plus appeler `check()`).
+`SoftAssertionExtension` reste `public final` (ServiceLoader l'impose). Si une autre fonctionnalité devait
+un jour alimenter le soft-assert, le collecteur serait à rouvrir ou à déplacer.
+
+**Solutions existantes examinées, aucune ne remplace l'implémentation** (déjà terminée, ~110 lignes,
+testée et validée au navigateur) :
+
+- **Serenity** `StepEventBus.enableSoftAsserts()` : vérifié au bytecode de la 4.2.22, l'indicateur ne sert
+  qu'à ne **pas suspendre les appels WebDriver** après l'échec d'une `@Step` (`webdriverCallsAreSuspended`).
+  Il n'accumule rien.
+- **AssertJ** (`SoftAssertions` + extension) : nécessite `@ExtendWith` et une instance injectée dans
+  **chaque test** (contredit le « zéro ligne côté test »), n'offre pas de bascule hard/soft par
+  configuration, et l'instance n'est pas accessible depuis un PageObject. N'est pas une dépendance du socle.
+- **JUnit** `assertAll(…)` : regroupement explicite dans le test lui-même, même objection.

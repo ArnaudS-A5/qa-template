@@ -22,7 +22,7 @@ FAILURE de l'étape 8) sont **implémentés et testés** ; les autres composants
 
 | # | Étape | Dépend de | Statut |
 | --- | --- | --- | --- |
-| 1 | Décider la convention de visibilité (public vs interne) | — | ✅ Fait (D15) |
+| 1 | Décider la convention de visibilité (public vs interne) | — | ✅ Fait (D15, réécrite le 2026-10-17 : un package par fonctionnalité) |
 | 2 | Politique de versioning & compatibilité (D6 historique remplacée par D6-bis) | 1 | ✅ Terminé (D6-bis : Wrapper + Enforcer ; D21 : dépréciation/publication/gate) |
 | 3 | Stratégie transverse d'erreurs | — (avant 6) | ✅ Fait (D18) |
 | 4 | Configuration & portée/thread-safety des composants | — (avant 6) | ✅ Fait (D19) |
@@ -54,12 +54,20 @@ méthode. La placer ici évite un déplacement coûteux de toutes les classes un
 > ⚠️ Ce n'est **pas** un « gel » : on ne fige aucune signature ici (l'API n'existe qu'à l'étape 6, où
 > se fait le vrai gel). On pose seulement le **plan des zones** public/interne.
 
-**Statut : ✅ Fait** — actée en **[D15](decisions.md)**, build vert après déplacement des 13 types.
+**Statut : ✅ Fait** — actée en **[D15](decisions.md)**, **réécrite le 2026-10-17** (branche
+`feature/package-by-feature`) : build vert, 70 tests, 46 fichiers déplacés avec `git mv`.
 
-- [x] Convention retenue : sous-arbres `com.example.qa.api.<domaine>` / `internal.<domaine>`, frontière
-      contrôlée par outil (japicmp étape 10), **sans JPMS**.
-- [x] Types existants classés api/internal (cf. tableau D15) : interfaces + `WebSync`/`MobileSync` en
-      `api` ; abstraits, impls et `TestFailureManager` en `internal`.
+- [x] Convention initiale (juin 2026) : sous-arbres `api.<domaine>` / `internal.<domaine>`. Limite
+      constatée : deux packages ne se voient que par des types `public`, donc toute implémentation devait
+      être publique et importable par un consommateur.
+- [x] **Convention retenue (2026-10-17)** : **un package par fonctionnalité** (`sync`, `page`, `data`,
+      `secret`, `failure`, `reporting`, `log`) + la racine pour `QaToolkitException` ; façade et
+      implémentations dans le **même package**, implémentations **package-private**. Le compilateur
+      interdit au consommateur de les référencer. Frontière complétée par un outil (japicmp, étape 10),
+      **sans JPMS**.
+- [x] Types classés par visibilité (cf. tableau D15) : contrat `public` ; implémentations et moteurs
+      package-private ; classes chargées par ServiceLoader `public final` ; `AbstractDataFileManager`
+      `sealed`.
 - [x] Décision actée dans `decisions.md` (D15).
 
 ---
@@ -90,11 +98,11 @@ Enforcer en place) ; gouvernance dépréciation/publication/gate actée en [D21]
 **Objectif** : hiérarchie d'exceptions maison du socle, checked vs unchecked. Préalable aux signatures
 (toute méthode publique déclare ce qu'elle lève). À figer avant l'étape 6.
 
-**Statut : ✅ Fait** — actée en [D18](decisions.md) ; 5 classes en `api.exception` + test de
-hiérarchie, build vert.
+**Statut : ✅ Fait** — actée en [D18](decisions.md) ; 5 classes d'exception (racine + un sous-type par
+fonctionnalité, rangés dans leur package depuis le 2026-10-17) + tests de hiérarchie, build vert.
 
-- [x] Exception racine `QaToolkitException` (concrète, `api.exception`) — **unchecked**.
-- [x] Sous-types par domaine : `SyncException`, `DataFileException`, `SecretException`, `ReportingException`.
+- [x] Exception racine `QaToolkitException` (abstraite, racine `com.example.qa`) — **unchecked**.
+- [x] Sous-types par domaine : `SyncException`, `DataFileException`, `SecretException`, `ReportingException` (`final`, constructeurs package-private : le consommateur les attrape, seul le socle les lève).
 - [x] Unchecked tranché et justifié (stack unchecked + conversion des exceptions tierces *checked* à la
       frontière ; traduction en `cause`) — cf. D18.
 
@@ -150,23 +158,23 @@ frontière API `sync` (option A) et arbitrage Logback (`compile` + ArchUnit) act
 fixée (D22). **Gel de l'API prononcé le 2026-06-24** (cf. dernier point). Les corps restent à écrire à
 l'étape 8.*
 
-- [x] **Factory publique `data`** : `DataFiles` existe comme coquille (`api.data`) et porte le point
+- [x] **Factory publique `data`** : `DataFiles` existe comme coquille (package `data`) et porte le point
       d'accès prévu vers `ExcelFileReaderWriter` / `CsvFileReaderWriter`.
 - [x] **Factories publiques `secret` / `reporting`** — **tranché (D15)** : `secret` → factory
-      **`SecretManagers`** créée (`api.secret`, `get()` neutre renvoyant le `SecretManager`, cache CyberArk) ;
-      `reporting` → **pas de factory** (reporting **AUTO**, tout le domaine passe `internal`, cf. D13).
+      **`SecretManagers`** créée (package `secret`, `get()` neutre renvoyant le `SecretManager`, cache CyberArk) ;
+      `reporting` → **pas de factory** (reporting **AUTO**, tous ses types d'usage package-private, cf. D13).
 - [x] `WebSync` (+ `AbstractSyncManager` / `MobileSync`) — signatures de synchro/interaction.
 - [x] `DataFileManager` (+ `AbstractDataFileManager` / `ExcelFileReaderWriter` / `CsvFileReaderWriter`) —
       signatures lecture/écriture data posées, corps volontairement en coquille.
 - [x] ~~`QaLogger`~~ — **classe supprimée** (étape 6) : aucune valeur ajoutée vs SLF4J natif. Le log
       d'action de synchro est émis par `WebSync`/`MobileSync` via un `org.slf4j.Logger` natif sous le
       **namespace stable `"qa"`** (cf. D17/D14 corrigé). Masquage assuré par le type `Secret`.
-- [x] **Log live (default socle)** — coquille de **`LogbackConfigurator`** (`internal.log`) existante,
+- [x] **Log live (default socle)** — coquille de **`LogbackConfigurator`** (package `log`) existante,
       avec namespace `"qa"` + clé `qa.logger.level`.
 - [x] **Arbitrage Logback** — **tranché (cf. D16-bis)** : `logback-classic` passe en scope **`compile`**
       (pour que `LogbackConfigurator` implémente `ch.qos.logback.classic.spi.Configurator`), et le couplage
       au binding côté consommateur est interdit par une **règle ArchUnit** (D19/α : pas de dépendance à
-      `ch.qos.logback..` hors `internal.log`) plutôt que par l'isolation de scope. Application étape 8
+      `ch.qos.logback..` hors `com.example.qa.log`) plutôt que par l'isolation de scope. Application étape 8
       (scope + `Configurator` + resources `logback-socle.xml` / `META-INF/services/...` + règle ArchUnit).
 - [x] `TestFailureManager` — capture d'échec (**classe simple**, D5 ; cf. **D16** + **D16-bis**) —
       **coquille complète** (le corps = écriture des 3 fichiers relève de l'étape 8, comme les autres composants) :
@@ -193,16 +201,18 @@ l'étape 8.*
       `sha256Prefix`, `toString`) ; implémentation du masquage en étape 7/8.
 - [x] `ReportingManager` (+ `AlmApiClient`, `ExecutionStatus`, `TestExecutionReport`) — signatures
       arrêtées : `publishStart(String almTestId)` + `publishEnd(TestExecutionReport)`. **Reporting AUTO**
-      (listener du socle) → **tout le domaine en `internal.reporting`**, aucun type public (cf. D13/D15).
+      (listener du socle) → **tous les types d'usage package-private** dans `reporting`, aucun type public (cf. D13/D15).
 - [x] **Frontière API `sync`** — **tranché (option A, cf. D15)** : `AbstractSyncManager` reste
-      `internal`, mais ses méthodes publiques (héritées par `WebSync`/`MobileSync`) sont **gelées** →
+      caché (package-private depuis le 2026-10-17), mais ses méthodes publiques (héritées par `WebSync`/`MobileSync`) sont **gelées** →
       garde-fou japicmp **élargi** à l'étape 10. Façades **sous-classables / méthodes non-`final`** →
       échappatoire « bris de glace » (mode opératoire dans le Javadoc des façades).
-- [x] **Date de gel de l'API : `2026-06-24`.** Toutes les signatures `api.*` sont arrêtées (y compris les
+- [x] **Date de gel de l'API : `2026-06-24`.** Toutes les signatures publiques sont arrêtées (y compris les
       signatures de masquage du type `Secret`), de même que les **contrats de sortie versionnés** (dossier
       `KO__` D8/D16, format de masquage `Secret` D12). **Gel pré-1.0.0 = marqueur d'intention** : ajustable
       si l'implémentation (étape 8) révèle un vrai besoin, tracé ; le **verrou dur** (japicmp) tombe à
-      **1.0.0** (étape 10, baseline = 1ʳᵉ release).
+      **1.0.0** (étape 10, baseline = 1ʳᵉ release). *Exemple d'ajustement tracé : le 2026-10-17, les
+      packages des types publics ont été réorganisés par fonctionnalité (D15) — signatures inchangées,
+      noms complets modifiés.*
 
 ---
 
@@ -225,7 +235,7 @@ sont déjà masquées) et masque les champs password du DOM capté avant écritu
 - [x] Implémenter le **masquage à la source** dans le type `Secret` (`masked()` / `sha256Prefix()` /
       `toString()`) — **sans changer sa signature publique** (figée en 6). **Fait** : format D12 +
       `SecretMaskingTest` (vecteur SHA-256 déterministe), build vert.
-- [x] Garantir le masquage dans `TestFailureManager` (`internal`) : le contenu écrit s'appuie sur le rendu
+- [x] Garantir le masquage dans `TestFailureManager` (package `failure`) : le contenu écrit s'appuie sur le rendu
       masqué à la source ; **fuite du DOM brut traitée** (2026-07-12, cf. D16 amendé) :
       `maskPasswordInputs` masque la `value` des `<input type="password">` du DOM capté **avant**
       écriture du `.html` (étoiles, best-effort). Le registre `ThreadLocal` envisagé par la revue externe
@@ -267,7 +277,7 @@ ArchUnit, `CyberArkApiClient`, le reporting AUTO, la sentinelle JS et les gestes
   - [ ] **Reste SYNC** : injection du **flag JS** de re-render (mécanisme de référence compris : drapeau
         `window.__f` + hook réseau `__activeCalls` détectant l'async malgré `readyState=complete` ; non
         systématique). *Gestes `MobileSync` : différés (mobile hors périmètre).*
-- [x] **`QaPageObject`** (2026-08-03, `api.page`) : classe de base des Page Objects consommateurs
+- [x] **`QaPageObject`** (2026-08-03, package `page`) : classe de base des Page Objects consommateurs
       exposant `web` + `web(SyncTimeout)` — supprime le *boilerplate* par page, oubli impossible en
       silence (erreur de compilation). Élargit l'API publique → périmètre japicmp (étape 10).
 - [ ] `DataFileManager` (Excel/CSV) + tests.
@@ -276,19 +286,19 @@ ArchUnit, `CyberArkApiClient`, le reporting AUTO, la sentinelle JS et les gestes
       brut à l'échec** via `RawDomCaptureListener` (option A, cf. D16) avec repli sur la source Serenity ;
       couvert par `TestFailureArtefactsTest`.
 - [x] **Soft-assert (D22-bis) — infrastructure** : extension Jupiter `AfterTestExecutionCallback`
-      (`SoftAssertionExtension`) + collecteur `ThreadLocal` (`SoftAssertions`, package
-      `internal.assertion`) ; fichier services `org.junit.jupiter.api.extension.Extension` ;
+      (`SoftAssertionExtension`) + collecteur `ThreadLocal` (`SoftAssertions`, package-private,
+      rangés dans le package `sync` depuis le 2026-10-17) ; fichier services `org.junit.jupiter.api.extension.Extension` ;
       auto-détection activée dans le Parent POM (`junit.jupiter.extensions.autodetection.enabled=true`).
       **Fait + testé (2026-07-12)**, activation prouvée empiriquement. Le listener `TestFailureManager`
       n'écrit que les artefacts (il ne fait pas échouer). *Le branchement des `should…` en mode soft est
       porté par l'item `WebSync` ci-dessus.*
-- [ ] `LogbackConfigurator` (`internal.log`) implémente `Configurator` + **passer `logback-classic` en
+- [ ] `LogbackConfigurator` (package `log`) implémente `Configurator` + **passer `logback-classic` en
       scope `compile`** (cf. D16-bis) + resources `logback-socle.xml` /
       `META-INF/services/ch.qos.logback.classic.spi.Configurator` (default socle) + test :
       default appliqué sans `logback.xml` local, surcharge locale prioritaire.
 - [ ] **Garde-fous ArchUnit (D19/α)** dans `qa-socle` + config Surefire `dependenciesToScan` dans le
       Parent POM (héritée par les consommateurs) : (1) « pas de champ `static` non-`final` » ;
-      (2) **interdiction de dépendre de `ch.qos.logback..` hors `internal.log`** (cf. D16-bis).
+      (2) **interdiction de dépendre de `ch.qos.logback..` hors `com.example.qa.log`** (cf. D16-bis).
 - [ ] `CyberArkApiClient` + tests ; **factory `SecretManagers.get()`** branchée sur l'impl.
 - [ ] `AlmApiClient` + tests ; **listener reporting AUTO** (`TestExecutionListener` lisant `@WithTag`
       → `publishStart`/`publishEnd`, 1er tag si plusieurs, non remonté si aucun).
@@ -328,12 +338,13 @@ baseline publiée — d'où sa place ici (et non avant la 1ʳᵉ release).
 
 **Statut : ⬜ À faire**
 
-- [ ] Brancher **japicmp/revapi** (périmètre = API publique de l'étape 1) et faire **échouer le build**
+- [ ] Brancher **japicmp/revapi** (périmètre = types publics de l'étape 1) et faire **échouer le build**
       sur breaking change non intentionnel ; baseline = la release publiée ci-dessous.
-      ⚠️ **Périmètre ≠ filtre de package** (revue externe 2026-07-07, cf. D15/C7) : les méthodes héritées
-      n'apparaissent pas dans `WebSync.class` → inclure **explicitement** `AbstractSyncManager` dans le
-      périmètre surveillé, ou filtrer par **annotation** (`@PublicApi`) — sinon la surface héritée gelée
-      n'est pas protégée.
+      ⚠️ **Surface héritée** (revue externe 2026-07-07, cf. D15/C7) : `AbstractSyncManager` étant
+      package-private, javac recopie ses méthodes publiques dans `WebSync.class`/`MobileSync.class` sous
+      forme de méthodes de pont **synthétiques**, que japicmp ignore par défaut → activer
+      `includeSynthetic` et **valider sur un retrait volontaire** ; repli : inclure **explicitement**
+      `AbstractSyncManager` dans le périmètre, ou filtrer par **annotation** (`@PublicApi`).
 - [ ] Publier la **version 1.0.0** sur Artifactory.
 - [ ] Fournir la **doc consommateur** : guide de démarrage + Javadoc de l'API publique (au-delà de
       `decisions.md`).

@@ -16,7 +16,12 @@
 >
 > **Re-vérifié le 2026-07-12** (doc vivante, chapitre 9 à jour) : **35 tests verts** — l'implémentation
 > a depuis livré FAILURE (artefacts + DOM brut), le masquage `Secret` + DOM (`type=password`) et
-> l'infrastructure soft-assert (`internal.assertion`).
+> l'infrastructure soft-assert.
+>
+> **Re-vérifié le 2026-10-17** (réorganisation par fonctionnalité, D15 réécrite) : `./mvnw clean test` →
+> **BUILD SUCCESS, 70 tests verts**. Les chapitres 2, 3 et 4.4 décrivent la structure **actuelle** ; les
+> lignes du chapitre 5.2 (W1–W7) décrivent l'état **à la revue de juin 2026**, où les packages s'appelaient
+> encore `api` et `internal`.
 
 ---
 
@@ -36,7 +41,7 @@ les choix « invisibles » du socle : activation native par ServiceLoader (rien 
 et `void`/exceptions unchecked (pas de cérémonie `throws`/`try-catch`).
 
 **Verdict global.** La conception est **solide, traçable et cohérente**. Le code actuel est un squelette
-**fidèle** aux décisions (frontière api/internal, nommage, no-leak, unchecked, thread-safety hygiène
+**fidèle** aux décisions (frontière public / interne, nommage, no-leak, unchecked, thread-safety hygiène
 toutes respectées et vérifiées). Il n'y a **aucun défaut critique dans le squelette lui-même** : les
 points « ultra-critiques » de cette revue sont des **pièges d'implémentation** (étape 8) à désamorcer
 **avant** d'écrire les corps — pas des bugs présents.
@@ -47,34 +52,37 @@ points « ultra-critiques » de cette revue sont des **pièges d'implémentation
 
 ```
 qa-parent (pom, agrégateur, versioning centralisé, enforcer, wrapper 3.9.9)
-└── qa-socle (jar)
-    ├── api/         ← contrat public consommé par les 17 projets (frozen, périmètre japicmp)
-    │   ├── sync       WebSync, MobileSync, SwipeDirection, SyncTimeout
-    │   ├── data       DataFileManager (interface), DataFiles (factory)
-    │   ├── secret     SecretManager (interface), SecretManagers (factory), Secret (valeur)
-    │   └── exception  QaToolkitException + 4 sous-types
-    └── internal/    ← moteurs & impls, non contractuels (libres de changer*)
-        ├── sync       AbstractSyncManager, SyncCondition
-        ├── data       AbstractDataFileManager, ExcelFileReaderWriter, CsvFileReaderWriter
-        ├── secret     CyberArkApiClient
-        ├── reporting  ReportingManager (interface), AlmApiClient, TestExecutionReport, ExecutionStatus
-        ├── failure    TestFailureManager, RawDomCaptureListener (+ META-INF/services ×2)
-        ├── assertion  SoftAssertions, SoftAssertionExtension (+ META-INF/services, D22-bis)
-        └── log        LogbackConfigurator
+└── qa-socle (jar) — com.example.qa, un package par fonctionnalité
+    ├── (racine)    QaToolkitException (abstraite)
+    ├── sync        public           : WebSync, MobileSync, SwipeDirection, SyncTimeout, SyncException
+    │               package-private  : AbstractSyncManager, SyncCondition, SoftAssertions
+    │               public final     : SoftAssertionExtension (+ META-INF/services, D22-bis)
+    ├── page        public           : QaPageObject
+    ├── data        public           : DataFileManager (interface), DataFiles (factory), DataFileException
+    │               package-private  : AbstractDataFileManager (sealed), ExcelFileReaderWriter, CsvFileReaderWriter
+    ├── secret      public           : SecretManager (interface), SecretManagers (factory), Secret, SecretException
+    │               package-private  : CyberArkApiClient
+    ├── reporting   public           : ReportingException
+    │               package-private  : ReportingManager (interface), AlmApiClient, TestExecutionReport, ExecutionStatus
+    ├── failure     public final     : TestFailureManager, RawDomCaptureListener (+ META-INF/services ×2)
+    └── log         public final     : LogbackConfigurator
 ```
 > *exception D15 : les **méthodes publiques** d'`AbstractSyncManager`, héritées par `WebSync`/`MobileSync`,
-> sont gelées malgré le package `internal` (garde-fou japicmp élargi).
+> sont gelées bien que le moteur soit package-private (garde-fou japicmp élargi).
 
-**La répartition des packages est cohérente avec l'intention** : un découpage **par visibilité** (api /
-internal) **puis par domaine**, ce qui est exactement la frontière que japicmp surveillera (étape 10) et
-qu'ArchUnit pourra protéger. Les noms de packages indiquent sans ambiguïté la responsabilité. Le
-classement réel des **29 types** (25 à la revue initiale, +2 `internal.assertion` le 2026-07-12,
-+2 `sync` — `SyncTimeout`/`SyncCondition` — le 2026-07-13) **correspond au tableau D15 à 100 %** (re-vérifié).
+**La répartition des packages est cohérente avec l'intention** : un découpage **par fonctionnalité** —
+façade et implémentations ensemble — où la **visibilité Java** (`public` / package-private) porte la
+frontière que japicmp surveillera (étape 10) et que le **compilateur fait respecter dès maintenant** (le
+consommateur ne peut pas importer une implémentation). Les noms de packages indiquent sans ambiguïté la
+responsabilité. Le classement réel des **30 types** (25 à la revue initiale, +2 soft-assert le 2026-07-12,
++2 `sync` — `SyncTimeout`/`SyncCondition` — le 2026-07-13, +1 `QaPageObject` le 2026-08-03) **correspond
+au tableau D15 à 100 %** (re-vérifié sur les class files le 2026-10-17).
 
-**Performance structurelle vs rigidité.** La structure est **plate et lisible** (1 niveau api/internal
-+ 1 niveau domaine), sans sur-ingénierie : pas de JPMS, pas de package `spi`, pas de couche de config
-maison. C'est le bon niveau d'abstraction pour une équipe peu mature. Les seuls points de rigidité sont
-**assumés et documentés** (surface `sync` gelée même en `internal`, contrats de sortie versionnés).
+**Performance structurelle vs rigidité.** La structure est **plate et lisible** (un niveau par
+fonctionnalité sous `com.example.qa`), sans sur-ingénierie : pas de JPMS, pas de package `spi`, pas de
+couche de config maison. C'est le bon niveau d'abstraction pour une équipe peu mature. Les seuls points de
+rigidité sont **assumés et documentés** (surface `sync` gelée même sur un moteur caché, contrats de sortie
+versionnés).
 
 ---
 
@@ -82,38 +90,45 @@ maison. C'est le bon niveau d'abstraction pour une équipe peu mature. Les seuls
 
 | Type | Package | Nature / modificateurs | Fidélité décision | État |
 |---|---|---|---|---|
-| `WebSync` | api.sync | `public class extends AbstractSyncManager`, méthodes non-`final` | D3/D4/D15 ✅ | **implémenté (web)** |
-| `MobileSync` | api.sync | `public class extends AbstractSyncManager`, non-`final` | D4 ✅ | surface héritée impl. ; **gestes différés** |
-| `SwipeDirection` | api.sync | `public enum` (UP/DOWN/LEFT/RIGHT) | D4 ✅ neutre | complet |
-| `SyncTimeout` | api.sync | `public enum` (SHORT/MEDIUM/LONG/EXTRA_LONG) + clé/défaut | D3 maj ✅ | **complet** |
-| `AbstractSyncManager` | internal.sync | `public abstract class`, `fluentWait(By,Function)` **`protected`** | D3 ✅ | **implémenté (web)** |
-| `SyncCondition` | internal.sync | `public enum` (6 conditions ≡ exceptions) + `classify` | D3 maj ✅ | **complet + testé** |
-| `DataFileManager` | api.data | `public interface` (sans marqueur `I`) | D5/D12 ✅ | signé |
-| `DataFiles` | api.data | `public final class`, ctor `private`, factory `static` | D15 ✅ | coquille |
-| `AbstractDataFileManager` | internal.data | `public abstract class implements DataFileManager`, primitives `protected abstract` | D5 ✅ template method | coquille |
-| `ExcelFileReaderWriter` / `CsvFileReaderWriter` | internal.data | `public class extends Abstract…` | D5/D14 ✅ | coquille |
-| `SecretManager` | api.secret | `public interface` neutre | D12 ✅ | signé |
-| `SecretManagers` | api.secret | `public final class`, ctor `private`, `get()` neutre `static` | D12/D15 ✅ idiome `Executors` | coquille |
-| `Secret` | api.secret | `public final class`, champ `private final`, ctor `private`, `of()` | D12/MASK ✅ | **implémenté + testé** (format D12) |
-| `CyberArkApiClient` | internal.secret | `public class implements SecretManager` | D12/D14 ✅ | coquille |
-| `ReportingManager` | internal.reporting | `public interface` (**internal**, seam de swap) | D13/D15 ✅ | signé |
-| `AlmApiClient` | internal.reporting | `public class implements ReportingManager` | D13/D14 ✅ | coquille |
-| `TestExecutionReport` | internal.reporting | `public final class`, champs `private final`, `of()` | D13 ✅ immuable extensible (renommé depuis `TestExecutionResult`, C3) | complet |
-| `ExecutionStatus` | internal.reporting | `public enum` (IN_PROGRESS/PASSED/FAILED) | D13 ✅ | complet |
-| `TestFailureManager` | internal.failure | `public class implements TestExecutionListener`, constantes `static final` | D5/D16 ✅ | **implémenté + testé** (artefacts `KO__`, masquage password du DOM) |
-| `RawDomCaptureListener` | internal.failure | `public class extends StepListenerAdapter`, `ThreadLocal` purgé | D16 ✅ (option A) | **implémenté** (confirmé via `qa-test`) |
-| `SoftAssertions` | internal.assertion | `public final class`, ctor `private`, collecteur `ThreadLocal` `static` | D22-bis ✅ | **implémenté + testé** |
-| `SoftAssertionExtension` | internal.assertion | `public class implements AfterTestExecutionCallback` | D22-bis ✅ | **implémenté** (activation prouvée) |
-| `LogbackConfigurator` | internal.log | `public final class`, constantes `static final` | D16-bis/D17 ✅ | coquille |
-| `QaToolkitException` | api.exception | `public class extends RuntimeException` (concrète) | D18 ✅ | **complet** |
-| `SyncException` / `DataFileException` / `SecretException` / `ReportingException` | api.exception | `public class extends QaToolkitException` | D18 ✅ | **complet** |
+| `WebSync` | sync | `public class extends AbstractSyncManager`, méthodes non-`final` | D3/D4/D15 ✅ | **implémenté (web)** |
+| `MobileSync` | sync | `public class extends AbstractSyncManager`, non-`final` | D4 ✅ | surface héritée impl. ; **gestes différés** |
+| `SwipeDirection` | sync | `public enum` (UP/DOWN/LEFT/RIGHT) | D4 ✅ neutre | complet |
+| `SyncTimeout` | sync | `public enum` (SHORT/MEDIUM/LONG/EXTRA_LONG) + clé/défaut | D3 maj ✅ | **complet** |
+| `SyncException` | sync | `public final class extends QaToolkitException`, constructeurs package-private | D18 ✅ | **complet** |
+| `AbstractSyncManager` | sync | package-private `abstract class`, `fluentWait(By,Function)` package-private | D3/D15 ✅ | **implémenté (web)** |
+| `SyncCondition` | sync | package-private `enum` (6 conditions ≡ exceptions) + `classify` | D3 maj ✅ | **complet + testé** |
+| `SoftAssertions` | sync | package-private `final class`, ctor `private`, collecteur `ThreadLocal` `static` | D22-bis ✅ | **implémenté + testé** |
+| `SoftAssertionExtension` | sync | `public final class implements AfterTestExecutionCallback` (ServiceLoader) | D22-bis ✅ | **implémenté** (activation prouvée) |
+| `QaPageObject` | page | `public abstract class extends PageObject`, champ `protected final web` | D15 ✅ | **implémenté**, validé au navigateur |
+| `DataFileManager` | data | `public interface` (sans marqueur `I`) | D5/D12 ✅ | signé |
+| `DataFiles` | data | `public final class`, ctor `private`, factory `static` | D15 ✅ | coquille |
+| `DataFileException` | data | `public final class extends QaToolkitException`, constructeurs package-private | D18 ✅ | **complet** |
+| `AbstractDataFileManager` | data | package-private `abstract sealed class implements DataFileManager` (permits CSV, Excel), primitives `protected abstract` | D5/D15 ✅ template method | coquille |
+| `ExcelFileReaderWriter` / `CsvFileReaderWriter` | data | package-private `final class extends Abstract…` | D5/D14 ✅ | coquille |
+| `SecretManager` | secret | `public interface` neutre | D12 ✅ | signé |
+| `SecretManagers` | secret | `public final class`, ctor `private`, `get()` neutre `static` | D12/D15 ✅ idiome `Executors` | coquille |
+| `Secret` | secret | `public final class`, champ `private final`, ctor `private`, `of()` | D12/MASK ✅ | **implémenté + testé** (format D12) |
+| `SecretException` | secret | `public final class extends QaToolkitException`, constructeurs package-private | D18 ✅ | **complet** |
+| `CyberArkApiClient` | secret | package-private `final class implements SecretManager` | D12/D14 ✅ | coquille |
+| `ReportingManager` | reporting | package-private `interface` (seam de swap) | D13/D15 ✅ | signé |
+| `AlmApiClient` | reporting | package-private `final class implements ReportingManager` | D13/D14 ✅ | coquille |
+| `TestExecutionReport` | reporting | package-private `final class`, champs `private final`, `of()` | D13 ✅ immuable extensible (renommé depuis `TestExecutionResult`, C3) | complet |
+| `ExecutionStatus` | reporting | package-private `enum` (IN_PROGRESS/PASSED/FAILED) | D13 ✅ | complet |
+| `ReportingException` | reporting | `public final class extends QaToolkitException`, constructeurs package-private | D18 ✅ | **complet** |
+| `TestFailureManager` | failure | `public final class implements TestExecutionListener` (ServiceLoader), constantes `static final` package-private | D5/D16 ✅ | **implémenté + testé** (artefacts `KO__`, masquage password du DOM) |
+| `RawDomCaptureListener` | failure | `public final class extends StepListenerAdapter` (ServiceLoader), `ThreadLocal` purgé | D16 ✅ (option A) | **implémenté** (confirmé via `qa-test`) |
+| `LogbackConfigurator` | log | `public final class`, constantes `static final` package-private | D16-bis/D17 ✅ | coquille |
+| `QaToolkitException` | racine | `public abstract class extends RuntimeException`, constructeurs `protected` | D18 ✅ | **complet** |
 
 **Lecture transverse de la nature des types** : l'usage des modificateurs Java est **discipliné et
 correct** — `abstract` réservé aux moteurs/templates ; `final` sur les classes qui ne doivent pas être
 étendues (factories, valeurs) et **jamais** sur les façades `sync` (échappatoire « bris de glace »
 voulue, D15) ; constructeurs `private` partout où une factory est le seul point d'entrée ; champs
-`private final` sur les valeurs immuables ; `protected` réservé au seul `fluentWait` (hérité, jamais
-réimplémenté). C'est exactement ce que la doctrine impose.
+`private final` sur les valeurs immuables. Depuis la réorganisation du 2026-10-17 : **package-private** pour
+tout ce que le consommateur ne doit pas nommer (moteur, impls, collecteur soft-assert, domaine reporting),
+`final` sur les impls et les classes ServiceLoader, constructeurs des exceptions de domaine
+package-private, `sealed` sur `AbstractDataFileManager`, et **plus aucun membre `protected`** dans le moteur
+(`fluentWait` & co. sont package-private). C'est exactement ce que la doctrine impose.
 
 ---
 
@@ -145,8 +160,8 @@ réimplémenté). C'est exactement ce que la doctrine impose.
   structurellement** : un secret loggué passera toujours par `toString()`. Bon design.
 - `SecretManagers.get()` neutre, cache `CyberArkApiClient`. Le swap d'outil = 1 ligne interne. ✅
 
-### 4.4 REPORTING (entièrement internal — AUTO)
-- Tout le domaine est `internal`, **aucun type public** : conforme à la décision « reporting AUTO »
+### 4.4 REPORTING (entièrement caché — AUTO)
+- Tous les types d'usage sont package-private, **aucun type public** (hors `ReportingException`) : conforme à la décision « reporting AUTO »
   (D13/D15). Le consommateur ne pose que `@WithTag` + config. `ReportingManager` reste le seam de swap.
 - `TestExecutionReport` immuable et **extensible** (champs ajoutables sans casser `publishEnd`). ✅
 
@@ -172,7 +187,7 @@ réimplémenté). C'est exactement ce que la doctrine impose.
 
 | # | Point fort | Pourquoi ça compte pour cette équipe |
 |---|---|---|
-| F1 | Frontière **api/internal** nette, classement des 25 types fidèle à D15 | Périmètre de compat clair ; l'équipe ne touche que `api` |
+| F1 | Frontière **public / package-private** nette, portée par le compilateur ; classement des 30 types fidèle à D15 | Périmètre de compat clair ; le consommateur ne peut pas importer une implémentation |
 | F2 | **Nommage** rigoureux et homogène (`Abstract*`, pas de `Impl`, `ApiClient`, interfaces neutres) | Lisibilité immédiate concept ↔ impl |
 | F3 | **Hiérarchie d'exceptions terminée et testée** (unchecked, racine concrète, `cause`) | Un seul `catch (QaToolkitException)` ; pas de `throws` à gérer |
 | F4 | **No-leak** respecté partout (tout par `By`, retours valeur, `within` covariant) | Pas de `StaleElement` possible côté test |
@@ -184,6 +199,8 @@ réimplémenté). C'est exactement ce que la doctrine impose.
 | F10 | **Build vert, rapide, déterministe** (10 tests à la revue ; 35 au 2026-07-12) | Base saine pour démarrer l'étape 8 |
 
 ### 5.2 Points faibles (non bloquants — à corriger au fil de l'eau)
+
+> Lignes W1–W7 : état **à la revue de juin 2026** (packages encore nommés `api` / `internal`).
 
 | # | Point faible | Correction | Statut |
 |---|---|---|---|
@@ -204,7 +221,7 @@ réimplémenté). C'est exactement ce que la doctrine impose.
 |---|---|---|---|
 | C1 | **Soft-assert (D22) impossible à faire échouer un test depuis un `TestExecutionListener`** : ce hook **observe**, il ne **vote** pas le verdict | 🔴 Bloquant si non anticipé | ✅ Terminé (D22-bis spiké puis **infrastructure implémentée le 2026-07-12** : `SoftAssertions` + `SoftAssertionExtension`, activation prouvée ; reste le branchement `should…` avec SYNC, cf. ch.9 #3/#4) |
 | C2 | **Lecture du `TestOutcome` Serenity depuis le listener JUnit** : `StepEventBus` est lié au thread du test ; en parallèle / au mauvais instant, l'outcome peut être absent | 🔴 Make-or-break de tout le domaine FAILURE | ✅ Terminé |
-| C3 | ~~**Collision de nom `TestExecutionResult`** (JUnit vs socle `internal.reporting`)~~ — ✅ **résolu** : type socle renommé `TestExecutionReport` (2026-06-25) | ✅ Levé | ✅ Terminé |
+| C3 | ~~**Collision de nom `TestExecutionResult`** (JUnit vs socle, domaine `reporting`)~~ — ✅ **résolu** : type socle renommé `TestExecutionReport` (2026-06-25) | ✅ Levé | ✅ Terminé |
 | C4 | **Messages différenciés de synchro** (« mauvaise page » / « application instable ») = **contrat de fait** consommé par `qa-maintenance` (D9) | 🔴 Si écrits en texte libre, la classification d'échec casse silencieusement | ⬜ Ouvert |
 | C5 | **Second listener (reporting AUTO) à enregistrer dans le MÊME fichier services** | 🟠 Oubli ⇒ no-op silencieux (le piège que D16 voulait éviter) | ⬜ Ouvert |
 | C6 | **Scope Logback `runtime`→`compile` + règle ArchUnit = un duo indissociable** | 🟠 Basculer le scope sans le garde-fou expose le binding aux 17 projets | ⬜ Ouvert |
@@ -213,7 +230,7 @@ réimplémenté). C'est exactement ce que la doctrine impose.
 
 | # | Risque | Gravité | Statut |
 |---|---|---|---|
-| C7 | **japicmp « élargi » (D15) inopérant avec un filtre par package** : les méthodes héritées n'apparaissent pas dans `WebSync.class` → un retrait dans `AbstractSyncManager` (`internal`) passe invisible | 🔴 Casse silencieuse des 17 projets malgré le garde-fou | ⬜ Ouvert |
+| C7 | **japicmp « élargi » (D15) à valider** : les méthodes héritées n'apparaissaient pas dans `WebSync.class` ; depuis que le moteur est package-private, javac y génère des méthodes de pont **synthétiques** que japicmp ignore par défaut → activer `includeSynthetic` et valider sur un retrait volontaire | 🔴 Casse silencieuse des 17 projets malgré le garde-fou | ⬜ Ouvert |
 | C8 | **Empilement de retries** : `fluentWait` maison × retries `WebElementFacade` (12) × waits implicites Serenity → timeout effectif multiplicatif ; + la boucle maison (`Supplier<T>`) ne tracke pas la **dernière exception ignorée** requise par les messages différenciés (C4) | 🟠 Tests qui « pendent » des minutes ; messages D3 impossibles à produire | ⬜ Ouvert |
 | C9 | **ALM : une session REST par `publishStart`/`publishEnd`** — l'auth ALM (LWSSO + QCSession) est coûteuse et throttlée ; 2 × N tests en parallèle ⇒ timeouts d'auth sur le reporting | 🟠 Reporting en échec sur des tests pourtant verts | ⬜ Ouvert |
 | C10 | **Ré-export `compile` massif** (POI/ooxml/compress partout) : surface CVE mutualisée + découpage `core`/`data` = breaking change **après** 1.0.0 ; alignement matrice **Serenity ↔ Selenium** à chaque bump | 🟠 À trancher AVANT la release, irréversible ensuite | ⬜ Ouvert |
@@ -251,7 +268,7 @@ a purgé l'outcome — surtout en **parallèle**. D16 marque déjà l'instant de
 Le listener reporting (étape 8) sera lui-même un `TestExecutionListener`, dont le callback reçoit
 `org.junit.platform.engine.TestExecutionResult` **et** qui doit construire le type valeur du socle.
 Deux types **homonymes** dans une même classe auraient forcé des noms pleinement qualifiés.
-- **Décidé & appliqué** : le type socle (`internal`, hors périmètre du gel) a été **renommé
+- **Décidé & appliqué** : le type socle (interne, hors périmètre du gel) a été **renommé
   `TestExecutionResult` → `TestExecutionReport`** — la collision disparaît à la source. Aucun impact de
   compatibilité (type interne) ; références Java et docs (D13 / D15 / SFD / roadmap) répercutées.
 
@@ -280,7 +297,7 @@ Pour que `LogbackConfigurator implements ch.qos.logback.classic.spi.Configurator
 doit passer **`runtime`→`compile`** (D16-bis). Mais en `compile`, le binding devient visible au compile
 des 17 projets.
 - **Ne pas faire** : basculer le scope **sans** poser simultanément la règle ArchUnit « aucune classe
-  hors `internal.log` ne dépend de `ch.qos.logback..` ».
+  hors `com.example.qa.log` ne dépend de `ch.qos.logback..` ».
 - **Faire** : livrer les deux **dans le même lot** (scope + règle ArchUnit + `dependenciesToScan` du
   Parent POM). Sinon le garde-fou contre le couplage au binding n'existe nulle part.
 
@@ -315,12 +332,17 @@ des 17 projets.
 D15 acte que la surface publique héritée d'`AbstractSyncManager` fait partie du contrat gelé, garde-fou
 « japicmp élargi ». Piège mécanique : japicmp compare des **class files**, et les méthodes héritées
 **n'apparaissent pas** dans `WebSync.class`.
-- **Ne pas faire** : configurer japicmp avec un filtre d'inclusion `api.*` (le réglage naturel vu D15) —
-  un retrait de méthode publique dans `internal.sync.AbstractSyncManager` passerait **invisible** tout en
+- **Ne pas faire** : configurer japicmp avec un simple filtre de package sans vérifier que la surface
+  héritée est vue — avec l'organisation d'origine (moteur `public` dans un package `internal`, filtre
+  `api.*`), un retrait de méthode publique dans `AbstractSyncManager` passait **invisible** tout en
   cassant les 17 projets.
-- **Faire** : inclure **explicitement** `AbstractSyncManager` dans le périmètre surveillé, ou filtrer par
-  **annotation** (`@PublicApi` maison sur les types du contrat) plutôt que par package. À trancher et
-  documenter dans D15 **avant** l'étape 10.
+- **Depuis le 2026-10-17** : le moteur étant package-private, javac recopie ses méthodes publiques dans
+  `WebSync.class` / `MobileSync.class` (méthodes de pont **synthétiques**, vérifié sur `click`). japicmp
+  **ignore les membres synthétiques par défaut**.
+- **Faire** : activer `includeSynthetic` et **valider sur un retrait volontaire** d'une méthode publique du
+  moteur (le build doit échouer) ; repli : inclure **explicitement** `AbstractSyncManager` dans le
+  périmètre surveillé, ou filtrer par **annotation** (`@PublicApi`). Documenté dans D15, à traiter à
+  l'étape 10.
 
 ### C8 — Empilement de retries + tracking de la dernière exception 🟠
 `fluentWait` maison (polling ~250 ms jusqu'au timeout) délègue à `WebElementFacade`, qui porte lui-même
@@ -389,9 +411,12 @@ d'entreprise** imposé par la DSI (chaîne d'héritage unique en Maven).
 ## 8. Ce qu'il ne faut PAS conclure de cette revue
 - Les `return null` / corps vides **ne sont pas** des défauts : c'est l'état attendu d'un squelette
   post-gel.
-- La structure **n'a pas besoin d'être retouchée** avant l'étape 8 : packages, visibilités, héritage,
-  modificateurs et signatures sont sains. Les actions sont **comportementales** (impl) et **éditoriales**
-  (doc), pas structurelles.
+- Au moment de la revue (juin 2026), la structure **n'avait pas besoin d'être retouchée** avant l'étape 8 :
+  packages, visibilités, héritage, modificateurs et signatures étaient sains. Elle a **néanmoins** été
+  réorganisée le 2026-10-17 (D15 réécrite) : l'organisation `api` / `internal` obligeait les implémentations
+  à être `public`, donc importables ; l'organisation par fonctionnalité permet de les rendre
+  package-private et de faire respecter la frontière par le compilateur. Les actions restantes de la revue
+  sont **comportementales** (impl) et **éditoriales** (doc).
 
 ---
 
@@ -420,9 +445,9 @@ d'entreprise** imposé par la DSI (chaîne d'héritage unique en Maven).
 | 1 | FAILURE — lecture du `TestOutcome` au bon thread (fondation du domaine) | ✅ Terminé | **C2** : outcome lié au thread du test, absent en parallèle si mal lu | ⏳ revue finale |
 | 2 | FAILURE — capture d'échec : 3 fichiers, feuille KO, `sanitize`, **DOM brut (option A)** | ✅ Terminé (DOM brut **confirmé via `qa-test`**) | **C2** (pont ThreadLocal même thread) + **DOM brut = texte non masqué** (cf. #9) | ✓ C2 (lecture validée D22-bis) ; ✓ masquage DOM brut (fait, #9) |
 | 3 | FAILURE — **soft-assert (D22-bis)** : extension Jupiter + collecteur ThreadLocal + autodetection Parent POM | ✅ Terminé — **infrastructure** (2026-07-12 : `SoftAssertions` + `SoftAssertionExtension`, activation prouvée) ; branchement `should…` → #4 | **C1** : un listener observe, ne vote pas ; l'échec passe par l'extension Jupiter | ✓ C1 (extension vote l'échec, prouvé empiriquement) |
-| 4 | **SYNC `WebSync`** : `fluentWait` + surface + `within` + `should…`/soft-assert | ✅ **web fait** (2026-07-13, cf. D3 maj) : moteur `poll` (testé), profils `SyncTimeout`, **diagnostic actif `SyncCondition`**, 78 méthodes, `within` deux-temps, `type(By,Secret)`, `should…` via `tryAssert` (testé), noms alignés Serenity. **Reste (2c)** : flag JS + C8 + `pageLoadTimeout` + tests `qa-test`. Mobile différé | **C4** : libellés désormais portés par `SyncCondition` (codes stables) ; **C8** : facade timeout 0 (une horloge) — validation e2e au pilote | ⏳ revue finale (e2e `qa-test`) |
+| 4 | **SYNC `WebSync`** : `fluentWait` + surface + `within` + `should…`/soft-assert | ✅ **web fait** (2026-07-13, cf. D3 maj) : moteur `poll` (testé), profils `SyncTimeout`, **diagnostic actif `SyncCondition`**, 78 méthodes, `within` deux-temps, `type(By,Secret)`, `should…` via `tryAssert` (testé), noms alignés Serenity. **Lot 2c fait et validé au navigateur (`qa-test`, 2026-08-02)** : C8 atteint (`actRaw`, `ConfigurableTimeouts`), `pageLoadTimeout` appliqué. **Reste** : flag JS de re-render. Mobile différé | **C4** : libellés désormais portés par `SyncCondition` (codes stables) ; **C8** : une seule horloge, **atteinte** (timeout facade `1L`, actions mutantes sur `WebElement` brut, implicit wait neutralisé) — rejouer la campagne à chaque bump Serenity (PA-15) | ⏳ revue finale (e2e `qa-test`) |
 | 5 | **Logback** : scope `compile` + `Configurator` + `logback-socle.xml` + services | ⬜ | **C6** : scope `compile` indissociable de la règle ArchUnit | ⏳ revue finale |
-| 6 | **Garde-fous ArchUnit** (static non-final ; ban `ch.qos.logback..` hors `internal.log`) + Surefire `dependenciesToScan` (Parent POM) | ⬜ | **C6** (l'autre moitié du duo) | ⏳ revue finale |
+| 6 | **Garde-fous ArchUnit** (static non-final ; ban `ch.qos.logback..` hors `com.example.qa.log`) + Surefire `dependenciesToScan` (Parent POM) | ⬜ | **C6** (l'autre moitié du duo) | ⏳ revue finale |
 | 7 | **DATA `DataFileManager`** : Excel chiffré (fixture réelle tôt) + CSV + `getValue` | ⬜ | Frontière **checked→unchecked** (D18), cause conservée | ⏳ revue finale |
 | 8 | **SECRET/MASK** — `masked()` / `sha256Prefix()` du type `Secret` | ✅ + testé | Masquage **à la source**, format D12 figé | ⏳ revue finale |
 | 9 | **SECRET/MASK** — intégration dans `TestFailureManager` + test « zéro clair » + garde-fou `value()` | ✅ Terminé côté socle (2026-07-12) : `maskPasswordInputs` (champs `type=password` → étoiles, best-effort) + `PasswordMaskingTest` (8 cas). **Registre ThreadLocal écarté** (cf. D16 amendé). Restent : « zéro clair » bout-en-bout (pilote, D20) + garde-fou `value()` (ArchUnit, #6) | **Masquage à la source** : masquer avant écriture ; le DOM brut échappait à `Secret` → traité par le blanking password ; **résiduel** : secret reflété hors champ password (cf. `points-attention.md`) | ✓ (résiduel tracé) |
@@ -431,3 +456,4 @@ d'entreprise** imposé par la DSI (chaîne d'héritage unique en Maven).
 | 12 | Dérives doc **W1–W7** | ✅ Terminé | — | — |
 | 13 | **Étape 9** — validation pilote sur SNAPSHOT/RC + ajustements API | ⬜ | Rester SNAPSHOT/RC : ne pas figer ni brûler une release | ⏳ revue finale |
 | 14 | **Étape 10** — japicmp/revapi + **1.0.0** + doc consommateur + généralisation | ⬜ | Baseline japicmp = 1ʳᵉ release publiée (rien à comparer avant) | ⏳ revue finale |
+| 15 | **Réorganisation par fonctionnalité** (2026-10-17) : packages `sync`/`page`/`data`/`secret`/`reporting`/`failure`/`log` + modificateurs (package-private, `final`, `sealed`, plus de `protected` dans le moteur) | ✅ Terminé (build vert, 70 tests ; compilation d'un consommateur simulé vérifiée) | La frontière est portée par le compilateur. **Limites** : contournement par split package / réflexion (PA-18), bris de glace sans moteur ni propagation par `within` (PA-19). Imports de `qa-test` à mettre à jour | ⏳ revue finale |
