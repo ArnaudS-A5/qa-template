@@ -6,8 +6,8 @@ import java.util.Map;
 /**
  * Contrat <b>neutre</b> de lecture/écriture de jeux de données de test (Excel ou CSV).
  *
- * <p>Le consommateur ne dépend que de cette interface (package {@code api.data}) : les implémentations
- * concrètes ({@code ExcelFileReaderWriter} / {@code CsvFileReaderWriter}) sont <b>internes</b> (D15) et
+ * <p>Le consommateur ne dépend que de cette interface : les implémentations
+ * concrètes ({@code ExcelFileReaderWriter} / {@code CsvFileReaderWriter}) sont <b>package-private</b> (D15) et
  * obtenues via la factory publique {@link DataFiles}, jamais par {@code new} direct. On peut ainsi
  * basculer Excel ↔ CSV sans toucher au code de test (D5).
  *

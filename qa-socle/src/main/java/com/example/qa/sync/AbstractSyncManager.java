@@ -54,7 +54,13 @@ import com.example.qa.secret.Secret;
  * <b>No-leak (D3)</b> : aucune méthode ne rend de {@code WebElement} vivant ; la recherche imbriquée
  * passe par {@link #within(By)}, dont le type de retour est <b>covariant</b> dans chaque sous-classe.
  *
- * <p>Squelette — signatures arrêtées (étape 6), corps réel à fournir (étape 8).
+ * <p><b>Visibilité</b> (D15) : package-private, donc jamais nommable par un consommateur. Ses méthodes
+ * <b>publiques</b> sont héritées par {@code WebSync}/{@code MobileSync} (javac y génère des méthodes de
+ * pont) et font partie du contrat gelé ; les membres du moteur ({@code fluentWait}, {@code query},
+ * {@code act}, {@code actRaw}, {@code tryAssert}…) sont package-private.
+ *
+ * <p>Implémenté (étape 8) : domaine SYNC web validé au navigateur (campagne {@code qa-test} du
+ * 2026-08-02).
  */
 abstract class AbstractSyncManager {
 

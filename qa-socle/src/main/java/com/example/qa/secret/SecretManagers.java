@@ -2,9 +2,9 @@ package com.example.qa.secret;
 
 /**
  * Factory <b>publique</b> des gestionnaires de secrets : <b>seul</b> point d'accès au
- * {@link SecretManager}, cachant l'implémentation {@code internal} (CyberArk), conformément à D12/D15.
+ * {@link SecretManager}, cachant l'implémentation package-private (CyberArk), conformément à D12/D15.
  * Le consommateur obtient un {@code SecretManager} <b>sans jamais nommer l'outil</b> → changer d'outil
- * (CyberArk → autre) = nouvelle impl {@code internal} + <b>une ligne</b> ici, <b>zéro changement</b>
+ * (CyberArk → autre) = nouvelle impl package-private + <b>une ligne</b> ici, <b>zéro changement</b>
  * côté consommateur.
  *
  * <p>Nom au pluriel suivant l'<b>idiome JDK</b> des factories ({@code Executors} → {@code Executor},

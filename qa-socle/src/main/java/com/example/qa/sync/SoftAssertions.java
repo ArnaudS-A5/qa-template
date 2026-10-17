@@ -25,7 +25,7 @@ import net.thucydides.model.util.EnvironmentVariables;
  * extension Jupiter ({@code AfterTestExecutionCallback}) « vote » l'échec au bon moment. Ce collecteur
  * ne fait qu'<b>accumuler</b> ; c'est {@link SoftAssertionExtension} qui <b>draine et fait échouer</b>.
  *
- * <p>Entièrement {@code internal} : appelé par les {@code should…} du domaine sync, jamais par le
+ * <p>Package-private (D15) : appelé par les {@code should…} du domaine sync, jamais par le
  * consommateur. État confiné au thread ({@link ThreadLocal}), purgé en fin de test → sûr en parallèle.
  */
 final class SoftAssertions {

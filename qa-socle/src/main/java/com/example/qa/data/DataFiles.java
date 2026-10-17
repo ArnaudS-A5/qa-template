@@ -4,7 +4,7 @@ import java.nio.file.Path;
 
 /**
  * Factory <b>publique</b> des gestionnaires de données : <b>seul</b> point d'accès aux implémentations
- * {@code internal.data} (Excel/CSV), conformément à D15. Le consommateur obtient un
+ * package-private (Excel/CSV), conformément à D15. Le consommateur obtient un
  * {@link DataFileManager} sans jamais faire {@code new} sur une impl, ni connaître son type concret.
  *
  * <p>Exemple (data-driven JUnit 5) :

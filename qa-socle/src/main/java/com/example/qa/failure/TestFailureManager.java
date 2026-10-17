@@ -34,8 +34,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Capture d'échec : <b>hook d'activation natif</b> ET <b>orchestrateur</b> de la production des
- * artefacts, en une seule <b>classe simple</b> (D5). Reste entièrement {@code internal} : jamais
- * référencée par le consommateur.
+ * artefacts, en une seule <b>classe simple</b> (D5). Classe {@code public final} par
+ * obligation ServiceLoader, jamais référencée par le consommateur (membres utilitaires package-private).
  *
  * <p><b>Activation native par présence du jar</b> (D16) : implémente le SPI JUnit
  * {@link TestExecutionListener}, déclaré dans

@@ -1,10 +1,10 @@
 package com.example.qa.reporting;
 
 /**
- * Contrat <b>interne</b> de remontée des résultats d'exécution vers un outil de gestion de tests.
+ * Contrat <b>interne</b> (package-private) de remontée des résultats d'exécution vers un outil de gestion de tests.
  * <b>Aucun type public</b> : le consommateur ne référence jamais ce contrat — la remontée est
  * <b>automatique</b> (D13). L'interface reste le <b>seam de swap</b> : changer d'outil (ALM → autre) =
- * nouvelle impl {@code internal}, zéro impact ailleurs (même principe que {@code SecretManager}, D12).
+ * nouvelle impl package-private, zéro impact ailleurs (même principe que {@code SecretManager}, D12).
  *
  * <p><b>Activation native (AUTO)</b> : un listener interne du socle (même mécanisme que la capture
  * d'échec — {@code TestExecutionListener} JUnit) appelle {@link #publishStart(String)} au début et

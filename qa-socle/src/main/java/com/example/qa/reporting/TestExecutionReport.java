@@ -9,7 +9,7 @@ package com.example.qa.reporting;
  *
  * <p><b>Nom en {@code …Report}</b> (et non {@code …Result}) pour éviter toute collision avec le type
  * homonyme JUnit {@code org.junit.platform.engine.TestExecutionResult}, qui cohabitera dans le listener
- * de reporting AUTO (étape 8). Type {@code internal} → ce renommage n'a aucun impact de compatibilité.
+ * de reporting AUTO (étape 8). Type package-private → ce renommage n'a aucun impact de compatibilité.
  *
  * <p>Squelette — corps réel à fournir (étape 8).
  */

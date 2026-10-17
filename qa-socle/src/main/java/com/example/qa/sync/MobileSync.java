@@ -6,7 +6,7 @@ import org.openqa.selenium.By;
 /**
  * Façade de synchronisation et d'interaction <b>mobile</b> (Appium).
  *
- * <p>Hérite de {@link AbstractSyncManager} <b>tout</b> le socle commun (moteur {@code fluentWait} +
+ * <p>Hérite d'{@code AbstractSyncManager} (moteur commun, package-private) <b>tout</b> le socle commun (moteur {@code fluentWait} +
  * flag JS, et l'intégralité des actions/lectures/états/attentes par {@link By}). C'est possible sans
  * duplication car {@code AppiumDriver} est un {@code WebDriver} et {@code AppiumBy} (accessibilityId,
  * iOSClassChain, androidUIAutomator...) est un {@code By} : la résolution d'élément via
@@ -29,6 +29,9 @@ import org.openqa.selenium.By;
  * et tests intouchés, le type déclaré restant {@code MobileSync}). Le correctif stable est ensuite
  * <b>promu dans le socle</b> (changement de corps = non-breaking). Sous-classe <b>nommée</b> conseillée
  * (plus facile à analyser/refactorer qu'une classe anonyme).
+ * <b>Limites</b> : le moteur est package-private, la sous-classe s'appuie donc sur {@code super.xxx()} et
+ * les autres méthodes publiques ; et la vue renvoyée par {@link #within(By)} reste un {@code MobileSync}
+ * de base (la surcharge ne s'y propage pas).
  *
  * <p>Squelette — signatures arrêtées (étape 6). Implémentation des gestes mobiles <b>différée hors
  * périmètre étape 8</b> (pas de pilote mobile à ce stade) : chaque geste lève pour l'instant

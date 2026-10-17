@@ -9,7 +9,7 @@ import org.openqa.selenium.interactions.Actions;
 /**
  * Façade de synchronisation et d'interaction <b>web</b> (WebDriver).
  *
- * <p>Hérite de {@link AbstractSyncManager} <b>tout</b> le socle commun (moteur {@code fluentWait} +
+ * <p>Hérite d'{@code AbstractSyncManager} (moteur commun, package-private) <b>tout</b> le socle commun (moteur {@code fluentWait} +
  * flag JS, et l'intégralité des actions/lectures/états/attentes par {@link By}, déléguées à l'API
  * publique Serenity {@code WebElementFacade}). {@code WebSync} n'ajoute donc <b>que le spécifique
  * web</b> : soumission de formulaire, double/clic-droit, listes déroulantes HTML {@code <select>},
@@ -26,8 +26,12 @@ import org.openqa.selenium.interactions.Actions;
  * et tests intouchés, le type déclaré restant {@code WebSync}). Le correctif stable est ensuite
  * <b>promu dans le socle</b> (changement de corps = non-breaking). Sous-classe <b>nommée</b> conseillée
  * (plus facile à analyser/refactorer qu'une classe anonyme).
+ * <b>Limites</b> : le moteur est package-private, la sous-classe s'appuie donc sur {@code super.xxx()} et
+ * les autres méthodes publiques ; et la vue renvoyée par {@link #within(By)} reste un {@code WebSync} de
+ * base (la surcharge ne s'y propage pas).
  *
- * <p>Squelette — signatures arrêtées (étape 6), corps réel à fournir (étape 8).
+ * <p>Implémenté (étape 8) : domaine SYNC web validé au navigateur (campagne {@code qa-test} du
+ * 2026-08-02).
  */
 public class WebSync extends AbstractSyncManager {
 
