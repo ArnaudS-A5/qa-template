@@ -473,7 +473,7 @@ abstract class AbstractSyncManager {
 				element)), false);
 	}
 
-	private static JavascriptExecutor js(WebDriver driver) {
+	static JavascriptExecutor js(WebDriver driver) {
 		return (JavascriptExecutor) driver;
 	}
 

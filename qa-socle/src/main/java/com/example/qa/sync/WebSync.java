@@ -12,8 +12,8 @@ import org.openqa.selenium.interactions.Actions;
  * <p>Hérite d'{@code AbstractSyncManager} (moteur commun, package-private) <b>tout</b> le socle commun (moteur {@code fluentWait} +
  * flag JS, et l'intégralité des actions/lectures/états/attentes par {@link By}, déléguées à l'API
  * publique Serenity {@code WebElementFacade}). {@code WebSync} n'ajoute donc <b>que le spécifique
- * web</b> : soumission de formulaire, double/clic-droit, listes déroulantes HTML {@code <select>},
- * classes CSS, focus fenêtre, propriétés CSS calculées.
+ * web</b> : soumission de formulaire, double/clic-droit, clic et saisie par JavaScript, listes
+ * déroulantes HTML {@code <select>}, classes CSS, focus fenêtre, propriétés CSS calculées.
  *
  * <p><b>No-leak (D3)</b> conservé : tout passe par {@code By}, aucune méthode ne rend de
  * {@code WebElement} vivant. La recherche imbriquée {@link #within(By)} renvoie un {@code WebSync}
@@ -73,6 +73,58 @@ public final class WebSync extends AbstractSyncManager {
 			element.sendKeys(value);
 			element.sendKeys(Keys.TAB);
 		});
+	}
+
+	/**
+	 * Script du clic JavaScript : déclenche le gestionnaire de clic de l'élément, sans passer par
+	 * l'interaction native (ni défilement, ni contrôle de visibilité ou de recouvrement).
+	 */
+	private static final String CLICK_VIA_JS_SCRIPT = "arguments[0].click();";
+
+	/**
+	 * Script de la saisie JavaScript : donne le focus, affecte la valeur par le <b>setter natif du
+	 * prototype</b> (et non par la propriété de l'instance, que certains frameworks surveillent pour
+	 * détecter un changement), puis déclenche {@code input} et {@code change}. Refuse tout autre élément
+	 * qu'un {@code input} ou un {@code textarea} : sans cela l'affectation serait sans effet et l'appel
+	 * réussirait à tort.
+	 */
+	private static final String TYPE_VIA_JS_SCRIPT =
+			"var el=arguments[0], v=arguments[1];"
+					+ "var isInput=el instanceof HTMLInputElement, isArea=el instanceof HTMLTextAreaElement;"
+					+ "if(!isInput && !isArea){throw new Error(\"typeViaJS : l'element n'est ni un input ni un textarea\");}"
+					+ "el.focus();"
+					+ "var proto=isInput ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;"
+					+ "Object.getOwnPropertyDescriptor(proto,'value').set.call(el,v);"
+					+ "el.dispatchEvent(new Event('input',{bubbles:true}));"
+					+ "el.dispatchEvent(new Event('change',{bubbles:true}));";
+
+	/**
+	 * Clique par <b>JavaScript</b> ({@code arguments[0].click()}) sur l'élément cible, pour les composants
+	 * pilotés par JavaScript dont le clic natif ({@code click(By)}) reste sans effet.
+	 *
+	 * <p>Même cadre que les autres actions : attente de l'élément (profil de timeout), refus d'un élément
+	 * <b>désactivé</b> ({@code [DISABLED]} au timeout), diagnostic, reporting, et fonctionne dans
+	 * {@link #within(By)}. En revanche, le clic JavaScript <b>saute</b> les contrôles de l'interaction
+	 * native : pas de défilement, pas de vérification de visibilité ni de recouvrement.
+	 */
+	public void clickViaJS(By locator) {
+		actRaw(locator, element -> js(currentDriver()).executeScript(CLICK_VIA_JS_SCRIPT, element));
+	}
+
+	/**
+	 * Saisit du texte par <b>JavaScript</b> dans un {@code input} ou un {@code textarea}, pour les champs
+	 * pilotés par JavaScript dont la saisie native ({@code type(By, CharSequence...)}) reste sans effet.
+	 * La valeur existante est <b>remplacée</b> ; les événements {@code input} et {@code change} sont
+	 * déclenchés pour que le framework de la page prenne la valeur en compte.
+	 *
+	 * <p>Même cadre que les autres actions (attente, garde d'activation, diagnostic, reporting,
+	 * {@code within}). <b>Pas de variante {@code Secret}</b> : un secret se saisit avec
+	 * {@code type(By, Secret)}.
+	 *
+	 * @param value texte à saisir (non {@code null})
+	 */
+	public void typeViaJS(By locator, String value) {
+		actRaw(locator, element -> js(currentDriver()).executeScript(TYPE_VIA_JS_SCRIPT, element, value));
 	}
 
 	/** Donne le focus fenêtre à l'élément cible (WebElementFacade#setWindowFocus). */
