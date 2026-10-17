@@ -10,7 +10,7 @@ package com.example.qa.secret;
  * il s'agit d'un consommateur de l'API CyberArk, pas d'un composant applicatif côté client.
  * Squelette — contenu réel à fournir (mécanisme déjà validé manuellement, cf. D12).
  */
-public class CyberArkApiClient implements SecretManager {
+final class CyberArkApiClient implements SecretManager {
 
 	@Override
 	public Secret getSecret(String name) {

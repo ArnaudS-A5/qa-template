@@ -15,7 +15,7 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  * <b>aucune annotation ni {@code @ExtendWith} côté test</b>. Hors mode soft, le drain est un no-op
  * (collecteur vide).
  */
-public class SoftAssertionExtension implements AfterTestExecutionCallback {
+public final class SoftAssertionExtension implements AfterTestExecutionCallback {
 
 	@Override
 	public void afterTestExecution(ExtensionContext context) {

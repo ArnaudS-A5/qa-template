@@ -56,7 +56,7 @@ import com.example.qa.secret.Secret;
  *
  * <p>Squelette — signatures arrêtées (étape 6), corps réel à fournir (étape 8).
  */
-public abstract class AbstractSyncManager {
+abstract class AbstractSyncManager {
 
 	/** Profil de timeout de cette instance (état propre ; le driver reste celui du thread). */
 	private final SyncTimeout timeout;
@@ -82,14 +82,14 @@ public abstract class AbstractSyncManager {
 	private WebDriver pageLoadTimeoutAppliedTo;
 
 	/** Construit un moteur racine adossé au profil de timeout donné (jamais {@code null}). */
-	protected AbstractSyncManager(SyncTimeout timeout) {
+	AbstractSyncManager(SyncTimeout timeout) {
 		this.timeout = timeout;
 		this.parent = null;
 		this.containerLocator = null;
 	}
 
 	/** Construit une <b>vue bornée</b> {@code within} : hérite le profil du parent, borne à {@code container}. */
-	protected AbstractSyncManager(AbstractSyncManager parent, By container) {
+	AbstractSyncManager(AbstractSyncManager parent, By container) {
 		this.timeout = parent.timeout;
 		this.parent = parent;
 		this.containerLocator = container;
@@ -111,7 +111,7 @@ public abstract class AbstractSyncManager {
 	 * @return le résultat de l'action une fois l'élément exploitable
 	 * @throws SyncException si l'action ne réussit pas avant le timeout du profil
 	 */
-	protected <T> T fluentWait(By locator, Function<WebElementFacade, T> action) {
+	<T> T fluentWait(By locator, Function<WebElementFacade, T> action) {
 		return withoutImplicitWait(() -> poll(locator, resolveTimeout(), resolvePolling(),
 				() -> action.apply(resolve(locator)),
 				() -> diagnose(locator)));
@@ -373,7 +373,7 @@ public abstract class AbstractSyncManager {
 	 * (comme les {@code is…}/{@code contains…} : élément absent → {@code false}). Ouvert aux sous-classes
 	 * (ex. prédicats web de {@code WebSync}) sans leur exposer le {@code WebElementFacade} lui-même.
 	 */
-	protected boolean query(By locator, Predicate<WebElementFacade> predicate) {
+	boolean query(By locator, Predicate<WebElementFacade> predicate) {
 		return withoutImplicitWait(() -> {
 			try {
 				return predicate.test(resolve(locator));
@@ -488,7 +488,7 @@ public abstract class AbstractSyncManager {
 	 * réellement de l'async. Aucune {@code readyState} (l'async n'en change pas). Vide pour l'instant → aucun
 	 * impact perf.
 	 */
-	protected void act(By locator, Consumer<WebElementFacade> action) {
+	void act(By locator, Consumer<WebElementFacade> action) {
 		// ── Emplacement sentinelle JS (lot 2c) : dépôt du drapeau AVANT l'action ──
 		fluentWait(locator, element -> {
 			action.accept(element);
@@ -519,7 +519,7 @@ public abstract class AbstractSyncManager {
 	 * passer par le {@code WebElementFacade} : ces méthodes ne portent <b>aucun</b> mécanisme d'attente
 	 * propre (audit bytecode), leur comportement temporel est donc déjà celui du seul {@link #poll}.
 	 */
-	protected void actRaw(By locator, Consumer<WebElement> action) {
+	void actRaw(By locator, Consumer<WebElement> action) {
 		withoutImplicitWait(() -> poll(locator, resolveTimeout(), resolvePolling(),
 				() -> {
 					WebElement element = resolveElement(locator);
@@ -566,7 +566,7 @@ public abstract class AbstractSyncManager {
 	 * ({@code Actions} : double-clic, clic droit…). Le driver reste <b>confiné au thread</b> et n'est
 	 * jamais mémorisé — no-leak (D3) préservé, aucun {@code WebElement} n'étant exposé.
 	 */
-	protected WebDriver currentDriver() {
+	WebDriver currentDriver() {
 		return driver();
 	}
 
@@ -791,7 +791,7 @@ public abstract class AbstractSyncManager {
 	 * tombera en fin de test), en mode <b>hard</b> il est relancé aussitôt. Point de branchement unique
 	 * des {@code should…} (D22-bis) — une seule horloge (la boucle), le prédicat n'attend pas lui-même.
 	 */
-	protected void tryAssert(By locator, BooleanSupplier condition, String message) {
+	void tryAssert(By locator, BooleanSupplier condition, String message) {
 		SoftAssertions.check(() -> withoutImplicitWait(() -> {
 			long deadlineNanos = System.nanoTime() + resolveTimeout().toNanos();
 			while (!condition.getAsBoolean()) {

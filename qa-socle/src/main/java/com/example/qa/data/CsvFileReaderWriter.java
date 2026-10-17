@@ -13,7 +13,7 @@ import java.util.List;
  *
  * <p>Squelette — signatures arrêtées (étape 6), corps réel à fournir (étape 8).
  */
-public class CsvFileReaderWriter extends AbstractDataFileManager {
+final class CsvFileReaderWriter extends AbstractDataFileManager {
 
 	/** Message du brut CSV non encore implémenté (à fournir à l'étape 8). */
 	private static final String A_FOURNIR = "Lecture/écriture CSV non implémentée (à fournir étape 8)";

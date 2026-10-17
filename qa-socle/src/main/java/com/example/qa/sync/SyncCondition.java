@@ -36,7 +36,7 @@ import org.openqa.selenium.interactions.MoveTargetOutOfBoundsException;
  * compte en retenant toujours la condition la <b>plus spécifique</b>, indépendamment de l'ordre de
  * déclaration — jamais le type parent qui masquerait le fils.
  */
-public enum SyncCondition {
+enum SyncCondition {
 
 	/** Aucun élément ne correspond au locator (étage résolution). */
 	ABSENT("ABSENT", "élément introuvable", NoSuchElementException.class, NoSuchElementException::new),

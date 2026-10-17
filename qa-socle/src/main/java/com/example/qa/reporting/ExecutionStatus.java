@@ -6,7 +6,7 @@ package com.example.qa.reporting;
  * <p>Utilisé par {@link TestExecutionReport} (publication finale) et implicitement par
  * {@link ReportingManager#publishStart} (qui envoie {@code IN_PROGRESS} sans passer par cet enum).
  */
-public enum ExecutionStatus {
+enum ExecutionStatus {
 
     /** Exécution en cours — envoyé au démarrage via {@link ReportingManager#publishStart}. */
     IN_PROGRESS,

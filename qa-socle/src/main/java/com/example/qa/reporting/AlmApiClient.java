@@ -31,7 +31,7 @@ package com.example.qa.reporting;
  * il s'agit d'un consommateur de l'API ALM, pas d'un composant applicatif côté client.
  * Squelette — contenu réel à fournir (étape 8).
  */
-public class AlmApiClient implements ReportingManager {
+final class AlmApiClient implements ReportingManager {
 
     @Override
     public void publishStart(String almTestId) {

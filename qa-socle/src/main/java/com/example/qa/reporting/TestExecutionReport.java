@@ -13,7 +13,7 @@ package com.example.qa.reporting;
  *
  * <p>Squelette — corps réel à fournir (étape 8).
  */
-public final class TestExecutionReport {
+final class TestExecutionReport {
 
     private final String almTestId;
     private final ExecutionStatus status;

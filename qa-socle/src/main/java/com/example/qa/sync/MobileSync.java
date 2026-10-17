@@ -51,7 +51,7 @@ public class MobileSync extends AbstractSyncManager {
 	}
 
 	/** Vue bornée {@code within} (usage interne, cf. {@link #within(By)}). */
-	protected MobileSync(AbstractSyncManager parent, By container) {
+	MobileSync(AbstractSyncManager parent, By container) {
 		super(parent, container);
 	}
 

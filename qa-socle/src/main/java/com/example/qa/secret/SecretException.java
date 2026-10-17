@@ -8,13 +8,13 @@ import com.example.qa.QaToolkitException;
  *
  * <p>⚠️ Le message ne doit <b>jamais</b> contenir la valeur du secret (cf. masquage, étape 7).
  */
-public class SecretException extends QaToolkitException {
+public final class SecretException extends QaToolkitException {
 
-    public SecretException(String message) {
+    SecretException(String message) {
         super(message);
     }
 
-    public SecretException(String message, Throwable cause) {
+    SecretException(String message, Throwable cause) {
         super(message, cause);
     }
 }

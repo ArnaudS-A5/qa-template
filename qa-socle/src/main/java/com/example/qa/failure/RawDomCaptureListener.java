@@ -34,7 +34,7 @@ import org.slf4j.LoggerFactory;
  * <p>Robuste par construction : si le driver est absent/fermé ou que la capture lève, on ne mémorise rien
  * et {@link TestFailureManager} retombe sur la source Serenity (repli — option C).
  */
-public class RawDomCaptureListener extends StepListenerAdapter {
+public final class RawDomCaptureListener extends StepListenerAdapter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("qa");
 
@@ -120,7 +120,7 @@ public class RawDomCaptureListener extends StepListenerAdapter {
      * Renvoie le DOM brut capté pour le thread courant <b>et le purge</b> (consommation). Vide si aucune
      * capture n'a eu lieu (driver absent, capture en échec) → le consommateur applique son repli.
      */
-    public static Optional<String> consumeCapturedDom() {
+    static Optional<String> consumeCapturedDom() {
         String dom = CAPTURED_DOM.get();
         CAPTURED_DOM.remove();
         return Optional.ofNullable(dom);

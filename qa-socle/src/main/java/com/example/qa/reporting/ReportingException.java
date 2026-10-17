@@ -8,13 +8,13 @@ import com.example.qa.QaToolkitException;
  * test introuvable, réponse illisible. L'exception bas-niveau (HTTP, parsing) est conservée en
  * {@code cause}.
  */
-public class ReportingException extends QaToolkitException {
+public final class ReportingException extends QaToolkitException {
 
-    public ReportingException(String message) {
+    ReportingException(String message) {
         super(message);
     }
 
-    public ReportingException(String message, Throwable cause) {
+    ReportingException(String message, Throwable cause) {
         super(message, cause);
     }
 }

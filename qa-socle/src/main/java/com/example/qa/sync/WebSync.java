@@ -42,7 +42,7 @@ public class WebSync extends AbstractSyncManager {
 	}
 
 	/** Vue bornée {@code within} (usage interne, cf. {@link #within(By)}). */
-	protected WebSync(AbstractSyncManager parent, By container) {
+	WebSync(AbstractSyncManager parent, By container) {
 		super(parent, container);
 	}
 

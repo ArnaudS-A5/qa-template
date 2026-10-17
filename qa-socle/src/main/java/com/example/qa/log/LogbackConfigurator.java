@@ -39,14 +39,14 @@ package com.example.qa.log;
 public final class LogbackConfigurator {
 
 	/** Namespace de log stable du socle (« qa »), indépendant du base package (D17). */
-	public static final String LOG_NAMESPACE = "qa";
+	static final String LOG_NAMESPACE = "qa";
 
 	/**
 	 * Clé de configuration réglant le niveau des logs d'action de synchro (logger « qa »). Défaut
 	 * {@code WARN} (discret, ne pollue pas le rapport Serenity). Surchargeable par projet via un
 	 * {@code logback.xml} local. Valeurs : {@code TRACE}/{@code DEBUG}/{@code INFO}/{@code WARN}/{@code ERROR}.
 	 */
-	public static final String LEVEL_KEY = "qa.logger.level";
+	static final String LEVEL_KEY = "qa.logger.level";
 
 	public LogbackConfigurator() {
 		// Constructeur public sans argument requis par le ServiceLoader Logback ; corps à l'implémentation (étape 8).

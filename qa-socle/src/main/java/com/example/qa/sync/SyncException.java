@@ -17,13 +17,13 @@ import com.example.qa.QaToolkitException;
  * de Selenium ou d'Appium — aucune exception {@code org.openqa.selenium.*} ne fuit dans le contrat
  * public (même principe que D12 / D15).
  */
-public class SyncException extends QaToolkitException {
+public final class SyncException extends QaToolkitException {
 
-    public SyncException(String message) {
+    SyncException(String message) {
         super(message);
     }
 
-    public SyncException(String message, Throwable cause) {
+    SyncException(String message, Throwable cause) {
         super(message, cause);
     }
 }

@@ -8,13 +8,13 @@ import com.example.qa.QaToolkitException;
  * classeur chiffré illisible... L'exception bas-niveau (Apache POI, I/O) est conservée en
  * {@code cause}.
  */
-public class DataFileException extends QaToolkitException {
+public final class DataFileException extends QaToolkitException {
 
-    public DataFileException(String message) {
+    DataFileException(String message) {
         super(message);
     }
 
-    public DataFileException(String message, Throwable cause) {
+    DataFileException(String message, Throwable cause) {
         super(message, cause);
     }
 }

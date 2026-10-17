@@ -13,13 +13,13 @@ package com.example.qa;
  * d'aucun domaine ; sinon, préférer une sous-classe ({@code SyncException}, {@code DataFileException},
  * {@code SecretException}, {@code ReportingException}).
  */
-public class QaToolkitException extends RuntimeException {
+public abstract class QaToolkitException extends RuntimeException {
 
-    public QaToolkitException(String message) {
+    protected QaToolkitException(String message) {
         super(message);
     }
 
-    public QaToolkitException(String message, Throwable cause) {
+    protected QaToolkitException(String message, Throwable cause) {
         super(message, cause);
     }
 }

@@ -28,7 +28,7 @@ import net.thucydides.model.util.EnvironmentVariables;
  * <p>Entièrement {@code internal} : appelé par les {@code should…} du domaine sync, jamais par le
  * consommateur. État confiné au thread ({@link ThreadLocal}), purgé en fin de test → sûr en parallèle.
  */
-public final class SoftAssertions {
+final class SoftAssertions {
 
 	/** Clé activant le mode souple (défaut {@link #SOFT_DEFAULT}). Lue via la config Serenity (D19). */
 	public static final String SOFT_KEY = "qa.assertions.soft";

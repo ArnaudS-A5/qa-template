@@ -53,28 +53,28 @@ import org.slf4j.LoggerFactory;
  * — les descriptions de steps remontées par Serenity contiennent déjà le rendu masqué. Ce composant
  * écrit le contenu tel quel ; il ne tente pas de re-scanner du texte arbitraire à la recherche de secrets.
  */
-public class TestFailureManager implements TestExecutionListener {
+public final class TestFailureManager implements TestExecutionListener {
 
     /**
      * Clé activant la production des artefacts d'échec (opt-out global). Défaut {@link #ENABLED_DEFAULT}.
      * Mettre à {@code false} dans {@code serenity.conf} désactive le mécanisme sans toucher au code.
      */
-    public static final String ENABLED_KEY = "qa.failure.artefacts.enabled";
+    static final String ENABLED_KEY = "qa.failure.artefacts.enabled";
 
     /** Production des artefacts activée par défaut. */
-    public static final boolean ENABLED_DEFAULT = true;
+    static final boolean ENABLED_DEFAULT = true;
 
     /** Clé : racine des dossiers de résultats KO. Défaut {@link #OUTPUT_DIR_DEFAULT}. */
-    public static final String OUTPUT_DIR_KEY = "qa.failure.artefacts.outputDir";
+    static final String OUTPUT_DIR_KEY = "qa.failure.artefacts.outputDir";
 
     /** Racine par défaut des dossiers KO. */
-    public static final String OUTPUT_DIR_DEFAULT = "target/qa-results";
+    static final String OUTPUT_DIR_DEFAULT = "target/qa-results";
 
     /** Clé : produire ou non le dump HTML de la step en échec. Défaut {@link #DUMP_HTML_DEFAULT}. */
-    public static final String DUMP_HTML_KEY = "qa.failure.artefacts.dumpHtml";
+    static final String DUMP_HTML_KEY = "qa.failure.artefacts.dumpHtml";
 
     /** Dump HTML produit par défaut. */
-    public static final boolean DUMP_HTML_DEFAULT = true;
+    static final boolean DUMP_HTML_DEFAULT = true;
 
     /** Propriété Serenity portant l'environnement actif, source du {@code {ENV}} du nommage (D19). */
     static final String ENV_PROPERTY = "environment";
@@ -108,7 +108,7 @@ public class TestFailureManager implements TestExecutionListener {
      * Produit les artefacts du test en échec : dossier {@code KO__{ENV}__{Test}__{ts}/} +
      * {@code ERROR.log} / {@code FAIL.log} / dump HTML, depuis le {@code TestOutcome} Serenity.
      */
-    public void writeArtefacts(TestOutcome outcome) {
+    void writeArtefacts(TestOutcome outcome) {
         try {
             String failingStepName = failingStep(outcome).map(TestStep::getDescription).orElse("step");
             String html = isDumpHtmlEnabled() ? failingStepHtml(outcome) : null;

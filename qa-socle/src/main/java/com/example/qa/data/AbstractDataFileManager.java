@@ -15,7 +15,8 @@ import java.util.Map;
  *
  * <p>Squelette — signatures arrêtées (étape 6), corps réel à fournir (étape 8).
  */
-public abstract class AbstractDataFileManager implements DataFileManager {
+abstract sealed class AbstractDataFileManager implements DataFileManager
+		permits CsvFileReaderWriter, ExcelFileReaderWriter {
 
 	/** Message du commun data non encore implémenté (mapping/en-têtes à fournir à l'étape 8). */
 	private static final String A_FOURNIR = "DataFileManager non implémenté (domaine data — à fournir étape 8)";

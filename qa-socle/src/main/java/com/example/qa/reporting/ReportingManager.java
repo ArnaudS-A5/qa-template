@@ -26,7 +26,7 @@ package com.example.qa.reporting;
  *
  * <p>Squelette — signatures arrêtées (étape 6), corps réels à fournir (étape 8).
  */
-public interface ReportingManager {
+interface ReportingManager {
 
     /**
      * Signale le démarrage d'un cas de test dans ALM (statut « In Progress »).
