@@ -19,21 +19,13 @@ import org.openqa.selenium.interactions.Actions;
  * {@code WebElement} vivant. La recherche imbriquée {@link #within(By)} renvoie un {@code WebSync}
  * (retour covariant).
  *
- * <p><b>Échappatoire « bris de glace »</b> (D15) : cette façade est volontairement <b>sous-classable</b>
- * et ses méthodes <b>non-{@code final}</b>. En cas de bug bloquant de synchro côté projet, créer une
- * <b>sous-classe nommée</b> qui surcharge la/les méthode(s) fautive(s) et l'instancier via un
- * <b>point d'obtention unique</b> du projet (un seul endroit à basculer puis à restaurer ; PageObjects
- * et tests intouchés, le type déclaré restant {@code WebSync}). Le correctif stable est ensuite
- * <b>promu dans le socle</b> (changement de corps = non-breaking). Sous-classe <b>nommée</b> conseillée
- * (plus facile à analyser/refactorer qu'une classe anonyme).
- * <b>Limites</b> : le moteur est package-private, la sous-classe s'appuie donc sur {@code super.xxx()} et
- * les autres méthodes publiques ; et la vue renvoyée par {@link #within(By)} reste un {@code WebSync} de
- * base (la surcharge ne s'y propage pas).
+ * <p><b>Non extensible</b> (D15) : cette façade est {@code final}. Le socle est livré recetté par
+ * {@code qa-test} ; un défaut se corrige <b>dans le socle</b>, jamais par une surcharge côté projet.
  *
  * <p>Implémenté (étape 8) : domaine SYNC web validé au navigateur (campagne {@code qa-test} du
  * 2026-08-02).
  */
-public class WebSync extends AbstractSyncManager {
+public final class WebSync extends AbstractSyncManager {
 
 	/** Façade web au profil de timeout par défaut ({@link SyncTimeout#MEDIUM}). */
 	public WebSync() {

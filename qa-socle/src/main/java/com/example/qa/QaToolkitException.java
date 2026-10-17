@@ -9,9 +9,10 @@ package com.example.qa;
  * être pollué de {@code throws}/{@code try-catch} — un échec interrompt le test, on ne le « récupère »
  * pas. Cohérent avec la stack (Selenium / Serenity / JUnit, toutes unchecked).
  *
- * <p>Racine <b>concrète</b> : peut être levée directement pour une erreur transverse ne relevant
- * d'aucun domaine ; sinon, préférer une sous-classe ({@code SyncException}, {@code DataFileException},
- * {@code SecretException}, {@code ReportingException}).
+ * <p>Racine <b>abstraite</b> (constructeurs {@code protected}) : le consommateur l'<b>attrape</b>, il ne
+ * l'instancie ni ne la lève. Toute erreur est levée par le socle via un sous-type de domaine
+ * ({@code SyncException}, {@code DataFileException}, {@code SecretException},
+ * {@code ReportingException}), {@code final} et à constructeurs package-private (D15, D18).
  */
 public abstract class QaToolkitException extends RuntimeException {
 
