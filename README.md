@@ -6,7 +6,7 @@ consommé **comme dépendance Maven** par les ~17 projets de tests de l'équipe
 
 > **Statut : API gelée (2026-06-24, packages réorganisés par fonctionnalité le 2026-10-17), implémentation en cours (étape 8).** Sont implémentés et testés : le
 > **masquage `Secret`** + DOM, la **capture d'échec** (`TestFailureManager` + DOM brut), l'**infra
-> soft-assert** (D22-bis) et tout le **domaine SYNC web** (moteur `fluentWait`, 78 méthodes, profils
+> soft-assert** (D22-bis) et tout le **domaine SYNC web** (moteur `fluentWait`, 80 méthodes, profils
 > `SyncTimeout`, diagnostic actif, `within`, `should…`/soft-assert — noms alignés sur Serenity), plus
 > **`QaPageObject`** (classe de base des Page Objects consommateurs). Le domaine SYNC est **validé au
 > navigateur** (campagne `qa-test` du 2026-08-02, Chrome) : profils effectivement appliqués, diagnostics

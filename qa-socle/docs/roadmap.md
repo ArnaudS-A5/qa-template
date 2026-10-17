@@ -280,8 +280,10 @@ ArchUnit, `CyberArkApiClient`, le reporting AUTO, la sentinelle JS et les gestes
 - [x] **`QaPageObject`** (2026-08-03, package `page`) : classe de base des Page Objects consommateurs
       exposant `web` + `web(SyncTimeout)` — supprime le *boilerplate* par page, oubli impossible en
       silence (erreur de compilation). Élargit l'API publique → périmètre japicmp (étape 10).
-- [ ] **Actions JavaScript** (clic, saisie) par `By` sur `WebSync`, pour les composants où l'action native
-      est sans effet (décision du 2026-10-17, cf. D3 et BF-SYNC-17) — **noms et sémantique à arrêter**.
+- [x] **Actions JavaScript** (2026-10-17, cf. D3 et BF-SYNC-17) : `clickViaJS(By)` et `typeViaJS(By, String)`
+      sur `WebSync`, pour les composants dont l'action native est sans effet. Passent par `actRaw` (mêmes
+      erreurs que les autres actions), fonctionnent dans `within`. Vérifiées sur une page jetable dans
+      Chrome ; **à valider sur de vrais frameworks (React, Angular, Vue) dans `qa-test`**.
 - [ ] `DataFileManager` (Excel/CSV) + tests.
 - [x] `TestFailureManager` (depuis le `TestOutcome` Serenity) + tests — **fait** : artefacts `KO__`
       (`ERROR.log`/`FAIL.log`/dump HTML), feuille KO, `sanitize` (accents translittérés), **capture du DOM

@@ -100,7 +100,7 @@ document principal) couvert ; **edge cases non garantis** : élément dans une *
 pas la frontière — il faut `switchTo().frame` avant, limite commune à toute la surface), **shadow DOM**
 (`elementFromPoint` renvoie le shadow host). Comportement documenté, à valider au navigateur (`qa-test`).
 
-## PA-7 — Surface SYNC (78 méthodes) non testable unitairement 🟠 (confirmé au sens fort)
+## PA-7 — Surface SYNC (80 méthodes) non testable unitairement 🟠 (confirmé au sens fort)
 
 Seuls le cœur pur (`poll`, `parseDuration`, `resolveTimeout`, `tryAssert`, `SyncCondition.classify`) et la
 résolution des profils sont testés **sans navigateur**. Tout le reste (résolution `WebElementFacade`,
@@ -199,8 +199,8 @@ mutation re-rendant le DOM attend bien le **nouvel état cible**.
 
 **Avancement (2026-08-02)** : la reprise C8 a créé un **point de passage unique** — `actRaw` — par lequel
 transitent désormais les **8 actions mutantes** (`click`, `type`×2, `typeAndEnter`, `typeAndTab`,
-`clear`, `doubleClick`, `contextClick`). La sentinelle s'y branchera donc **une seule fois** et couvrira
-tout le groupe. **Reste** : `submit` (spécifique web) passe encore par `act()`/facade, n'ayant pas de
+`clear`, `doubleClick`, `contextClick`) ; depuis le 2026-10-17, `clickViaJS` et `typeViaJS` y passent
+aussi (10 actions). La sentinelle s'y branchera donc **une seule fois** et couvrira tout le groupe. **Reste** : `submit` (spécifique web) passe encore par `act()`/facade, n'ayant pas de
 mécanisme parasite à contourner — à basculer si l'on veut que la règle « aucune mutation hors `actRaw` »
 soit absolue. Le mécanisme de sentinelle lui-même est décrit en **C.7** du plan de remédiation.
 

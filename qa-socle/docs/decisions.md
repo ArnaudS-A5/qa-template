@@ -188,22 +188,46 @@ masquée, champ d'un formulaire React ou Angular), l'action native Selenium — 
 `clear()` + `sendKeys` — peut rester **sans effet visible**. L'automaticien doit alors pouvoir exécuter
 l'action **par JavaScript dans la page**, sur ce composant précis.
 
-**Décision** : `WebSync` offre **deux** actions exécutées en JavaScript, désignées par `By` : un **clic** et
-une **saisie de texte** (les deux cas les plus fréquents). Web uniquement. Elles passent par le point de
-passage unique des actions mutantes (`actRaw` : attente, garde d'activation, diagnostic `[ABSENT]` /
-`[DISABLED]`, reporting Serenity) et fonctionnent donc aussi dans `within`, y compris imbriqué. Le recours
-au JavaScript est **explicite** au point d'appel. ⚠️ **Noms et sémantique à arrêter** (BF-SYNC-17).
+**Décision** : `WebSync` offre **deux** actions exécutées en JavaScript, désignées par `By` (web
+uniquement, rien dans `MobileSync`) :
+
+| Méthode | Comportement |
+|---|---|
+| `clickViaJS(By)` | `arguments[0].click()` sur l'élément résolu. Saute les contrôles de l'interaction native : pas de défilement, pas de vérification de visibilité ni de recouvrement. |
+| `typeViaJS(By, String)` | **Remplace** la valeur d'un `input` ou d'un `textarea` : focus, affectation par le **setter natif du prototype** (et non par la propriété de l'instance, que certains frameworks surveillent pour détecter un changement), puis événements `input` et `change`. Tout autre élément est refusé par une erreur franche (sinon l'appel réussirait sans effet). |
+
+- **Nommage** : suffixe `ViaJS`, `JS` en **majuscules** (abréviation, pas de camel case), même règle pour
+  toute future méthode du même type. Ces méthodes n'ont pas d'équivalent Selenium / Serenity : la règle
+  « noms alignés sur Serenity » ne s'applique pas.
+- **Même cadre que les autres actions mutantes** : elles passent par `actRaw` (attente selon le profil de
+  timeout, garde d'activation, diagnostic `[ABSENT]` / `[DISABLED]`, reporting Serenity) et fonctionnent
+  donc aussi dans `within`, y compris imbriqué. Un élément désactivé ou absent lève les mêmes erreurs que
+  les actions natives.
+- **Le recours au JavaScript est explicite** au point d'appel : jamais un mode global, jamais un repli
+  automatique.
+- **Pas de variante `Secret`** : la saisie d'un secret ne concerne que la connexion, au début des tests, et
+  se fait avec `type(By, Secret)`. Un second point de déballage d'un `Secret` n'est donc pas créé (cf.
+  BF-SYNC-14).
+- **Enchaînement de techniques** : l'ancien socle enchaînait plusieurs techniques de clic avec une
+  vérification de l'effet. Le socle ne le fait pas — seule la page connaît l'effet attendu —, mais une page
+  peut l'écrire explicitement : `click`, vérification, puis `clickViaJS` si l'effet est absent.
 
 **Options écartées** : surcharger `click` / `type` par sous-classe (granularité trop grossière, ne suit pas
 dans `within`) ; un mode global ou par instance « actions en JavaScript » (change le comportement de toutes
-les actions, un clic JavaScript saute les vérifications de visibilité et d'activation) ; un repli
-automatique quand l'action native « n'a pas d'effet » (cet état n'est pas détectable de façon fiable,
-risque de double action) ; une méthode générique « exécuter ce script sur l'élément » (ouvre en grand le
-contournement du socle).
+les actions) ; un repli automatique quand l'action native « n'a pas d'effet » (cet état n'est pas
+détectable de façon fiable, risque de double action) ; une méthode générique « exécuter ce script sur
+l'élément » (ouvre en grand le contournement du socle).
 
 **Dernier recours hors socle** : `QaPageObject` hérite de `PageObject` (Serenity) et donne accès à
 `evaluateJavascript(…)`, `getDriver()` et `withAction()`. Ce chemin ne bénéficie ni du moteur d'attente, ni
 du diagnostic, ni de `within`, ni du masquage d'un `Secret`, et la règle ArchUnit de PA-17 le signalerait.
+
+**Vérification (2026-10-17)** : sur une page jetable, hors dépôts, dans Chrome : remplacement de la valeur,
+prise en compte par un champ dont la propriété `value` est surveillée à la manière de React (alors qu'une
+affectation naïve est ignorée), événement `change`, `within`, clic sur un bouton recouvert (le clic natif
+lève `[INTERCEPTED]`), `[DISABLED]` sur un bouton désactivé, `[ABSENT]` sur un élément introuvable, erreur
+franche sur un élément qui n'est pas un champ. **Non validé** sur de vrais frameworks (React, Angular,
+Vue) : à faire dans `qa-test`, qui n'est pas modifié pour l'instant.
 
 ## D4 — Abstraction de la synchronisation (web + mobile)
 

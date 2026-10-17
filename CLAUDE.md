@@ -105,7 +105,7 @@ Convention de commit : `<type>(<zone>): <résumé impératif court>` avec types 
 - **Étape 7 en cours** : masquage `Secret` + masquage du DOM (`maskPasswordInputs`, champs `type=password`) implémentés et testés unitairement ; validation « zéro clair » **confirmée au navigateur** (0 occurrence en clair dans les dumps).
 - **Étape 8 en cours** :
   - **FAILURE** (`TestFailureManager` + `RawDomCaptureListener`) et **infra soft-assert** (`SoftAssertions`/`SoftAssertionExtension`, package `sync`, D22-bis) — faits + testés.
-  - **SYNC web** — **fait et validé au navigateur** (campagne `qa-test` du 2026-08-02) : moteur `poll`, profils `SyncTimeout` **effectivement appliqués**, diagnostic actif `SyncCondition`, 78 méthodes, `within`, `type(By,Secret)`, `should…` via `tryAssert`. **C8 (« une seule horloge ») réellement atteint** : `NO_FACADE_CLOCK = 1L`, les 8 actions mutantes sur `WebElement` brut via `actRaw`, implicit wait neutralisé via `ConfigurableTimeouts`, garde `requireEnabled`, `classify` élargi aux exceptions Serenity. `pageLoadTimeout` appliqué (marqueur lié au driver).
+  - **SYNC web** — **fait et validé au navigateur** (campagne `qa-test` du 2026-08-02) : moteur `poll`, profils `SyncTimeout` **effectivement appliqués**, diagnostic actif `SyncCondition`, 80 méthodes (dont `clickViaJS` / `typeViaJS`, 2026-10-17), `within`, `type(By,Secret)`, `should…` via `tryAssert`. **C8 (« une seule horloge ») réellement atteint** : `NO_FACADE_CLOCK = 1L`, les 8 actions mutantes sur `WebElement` brut via `actRaw`, implicit wait neutralisé via `ConfigurableTimeouts`, garde `requireEnabled`, `classify` élargi aux exceptions Serenity. `pageLoadTimeout` appliqué (marqueur lié au driver).
   - **`QaPageObject`** (package `page`) : classe de base des PageObjects consommateurs.
   - **Restent** : sentinelle **flag JS**, `DataFileManager`, `LogbackConfigurator`, ArchUnit, `CyberArkApiClient`, reporting AUTO, gestes `MobileSync`.
 - **Étapes 9–10** : à faire (pilote, japicmp, release 1.0.0).
@@ -124,10 +124,11 @@ Convention de commit : `<type>(<zone>): <résumé impératif court>` avec types 
 - **`within`** = vue bornée immuable, résolution **deux-temps** (no-leak, localise container vs child).
 - **Nommage** : le socle reprend **exactement** le nom Serenity/Selenium appelé (wrapper de synchro).
 - **Deux chemins d'exécution, une seule horloge (C8)** :
-  - **8 actions mutantes** (`click`, `type`×2, `typeAndEnter`, `typeAndTab`, `clear`, `doubleClick`, `contextClick`) → **`actRaw`** sur `WebElement` **brut**. Motif : ces méthodes de la facade passent par `WithRetries` (12×250 ms, **compilé en dur**) = seconde horloge inévitable autrement. Le reporting Serenity est **réémis** (`notifyScreenChange`).
+  - **10 actions mutantes** (`click`, `type`×2, `typeAndEnter`, `typeAndTab`, `clear`, `doubleClick`, `contextClick`, `clickViaJS`, `typeViaJS`) → **`actRaw`** sur `WebElement` **brut**. Motif pour les 8 natives : les méthodes correspondantes de la facade passent par `WithRetries` (12×250 ms, **compilé en dur**) = seconde horloge inévitable autrement. Le reporting Serenity est **réémis** (`notifyScreenChange`).
   - **52 autres** (lectures, prédicats, `select…`, géométrie, attentes) → **`WebElementFacade`**, dont l'audit bytecode montre qu'elles ne portent aucun mécanisme d'attente propre.
+- **Actions JavaScript** (D3 maj 2026-10-17) : `clickViaJS(By)` et `typeViaJS(By, String)`, pour les composants dont l'action native reste sans effet. Suffixe `ViaJS` (`JS` en majuscules). `typeViaJS` remplace la valeur d'un `input`/`textarea` (setter natif + événements `input` et `change`). Pas de variante `Secret` ; web uniquement.
 - **Neutralisation de l'implicit wait** : via **`ConfigurableTimeouts`** (API Serenity) — `WebDriverFacade` maintient le sien **au-dessus** du driver natif ; agir sur `manage().timeouts()` seul est **sans effet** sur la résolution d'élément.
-- **`requireEnabled`** : le `WebElement` natif accepte **silencieusement** un clic sur un élément désactivé (faux succès). La garde lève une exception classifiable → `[DISABLED]` au timeout, sur les 8 actions.
+- **`requireEnabled`** : le `WebElement` natif accepte **silencieusement** un clic sur un élément désactivé (faux succès). La garde lève une exception classifiable → `[DISABLED]` au timeout, sur les actions mutantes.
 
 Le base package `com.example.qa` et le `groupId` sont des placeholders volontaires à remplacer à l'adoption (refactor IDE « Rename package » + 2 `<groupId>` dans les POM).
 
