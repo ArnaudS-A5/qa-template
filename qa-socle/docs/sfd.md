@@ -134,6 +134,7 @@ mais avec une **synchronisation intégrée à chaque méthode**, robuste aux SPA
 | **BF-SYNC-14** | La saisie d'une **valeur sensible** **doit** se faire via `type(By, Secret)` : le clair (`secret.value()`) est saisi dans le DOM, mais seul le rendu **masqué** apparaît dans le log d'action. C'est le **seul** point de déballage d'un `Secret` pour la saisie. |
 | **BF-SYNC-15** | Au timeout, l'échec **doit** être traduit en `SyncException` porteuse d'un **message différencié** : « mauvaise page / page non chargée » si l'élément est absent ; « application instable » s'il est présent mais jamais interactable. Ces messages alimentent `TestFailureManager` et l'agent de maintenance (D9). |
 | **BF-SYNC-16** | Le socle **doit** offrir un mode **soft assert** piloté par config (`qa.assertions.soft`, défaut `false`) **sans changer les signatures** (`should…` reste `void`) : en mode soft, les assertions **n'lèvent pas** mais sont **collectées** (par test, `ThreadLocal`) ; en **fin de test**, une **extension Jupiter** (`AfterTestExecutionCallback`, D22-bis) agrège et **fait échouer** le test avec le récapitulatif de **toutes** les assertions KO (style `assertAll`). Pas de mode « warning + vert ». Bascule par la **seule clé**, zéro ligne côté test. *(D22, impl étape 8)* |
+| **BF-SYNC-17** | **⚠️ Point ouvert (noms et sémantique à arrêter).** `WebSync` **doit** offrir deux actions exécutées par **JavaScript dans la page**, désignées par `By`, pour les composants pilotés par JavaScript dont l'action native Selenium reste sans effet : un **clic** et une **saisie de texte**. Elles passent par le point de passage des actions mutantes (`actRaw` : attente, garde d'activation, diagnostic, reporting) et fonctionnent dans `within`. La saisie **doit** déclencher les événements que les frameworks de page écoutent (`input`, `change`). **Web uniquement.** Le recours au JavaScript **doit** rester explicite au point d'appel (ni mode global, ni repli automatique). *(D3 maj 2026-10-17)* |
 
 **Règles de gestion** : `fluentWait` est écrit **une seule fois** dans l'abstract, package-private, jamais
 réimplémenté par les sous-classes (D3 maj). À l'intérieur, l'action délègue à l'API publique Serenity
@@ -157,8 +158,8 @@ par `SyncCondition` (message multi-codes), le principe « absent vs instable » 
 
 **Frontière API (tranchée, D15 — option A)** : `AbstractSyncManager` reste un moteur caché (package-private), mais ses méthodes
 publiques (héritées par `WebSync`/`MobileSync`) sont **gelées** → garde-fou japicmp **élargi** (étape 10).
-Les façades restent **sous-classables / méthodes non-`final`** → échappatoire « bris de glace » (sous-classe
-nommée via un point d'obtention unique ; mode opératoire dans le Javadoc des façades).
+Les façades `WebSync` / `MobileSync` sont **`final`** : pas de surcharge côté projet, un défaut se corrige
+dans le socle (D15).
 
 ---
 
@@ -421,7 +422,7 @@ D21, D7, roadmap étapes 2 et 10.
 
 | Domaine | Besoins | Composants | Décisions | Étape roadmap | État signatures |
 |---|---|---|---|---|---|
-| SYNC | BF-SYNC-01…16 | `WebSync`, `MobileSync`, `AbstractSyncManager`, `SwipeDirection`, **`SyncTimeout`**, `SyncException` (publics) ; `SyncCondition`, `SoftAssertions` (package-private) ; `SoftAssertionExtension` (`public final`, ServiceLoader) | D3, D4, D22, D22-bis | 6 → 8 | ✅ **web implémenté** (2026-07-13 : moteur, surface, `within`, `should…`/soft-assert, profils, diagnostic) et **validé au navigateur** (2026-08-02 : C8, `pageLoadTimeout`) ; noms alignés Serenity ; reste flag JS + mobile différé |
+| SYNC | BF-SYNC-01…17 | `WebSync`, `MobileSync`, `AbstractSyncManager`, `SwipeDirection`, **`SyncTimeout`**, `SyncException` (publics) ; `SyncCondition`, `SoftAssertions` (package-private) ; `SoftAssertionExtension` (`public final`, ServiceLoader) | D3, D4, D22, D22-bis | 6 → 8 | ✅ **web implémenté** (2026-07-13 : moteur, surface, `within`, `should…`/soft-assert, profils, diagnostic) et **validé au navigateur** (2026-08-02 : C8, `pageLoadTimeout`) ; noms alignés Serenity ; reste flag JS + mobile différé |
 | DATA | BF-DATA-01…09 | `DataFileManager`, `DataFiles`, `Abstract…`, `Excel`/`Csv…` | D5 | 6 → 8 | ✅ figées |
 | SECRET | BF-SEC-01…06 | `SecretManager`, **`SecretManagers`** (factory), `CyberArkApiClient` | D12 | 6 → 8 | ✅ figées + factory |
 | MASK | BF-MASK-01…06 | `Secret` (+ `TestFailureManager`) | D12, D14, D16, D16-bis | 6/7 → 8 | ✅ signatures + format D12 + **masquage `Secret` et DOM (password) implémentés & testés** ; « zéro clair » e2e au pilote |

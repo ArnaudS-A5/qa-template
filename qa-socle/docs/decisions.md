@@ -181,6 +181,30 @@ aucune régression sur les artefacts. Détail complet : `plan-remediation.md`.
 > ⚠️ Ces quatre constats reposent sur des **comportements internes non contractuels** de Serenity 4.2.22 :
 > à rejouer à chaque bump (cf. **PA-15**).
 
+### Mise à jour (2026-10-17) — actions exécutées en JavaScript (clic, saisie)
+
+**Besoin** : dans une page dont un composant est piloté par du JavaScript (sélecteur de date, saisie
+masquée, champ d'un formulaire React ou Angular), l'action native Selenium — `click`, ou `type` =
+`clear()` + `sendKeys` — peut rester **sans effet visible**. L'automaticien doit alors pouvoir exécuter
+l'action **par JavaScript dans la page**, sur ce composant précis.
+
+**Décision** : `WebSync` offre **deux** actions exécutées en JavaScript, désignées par `By` : un **clic** et
+une **saisie de texte** (les deux cas les plus fréquents). Web uniquement. Elles passent par le point de
+passage unique des actions mutantes (`actRaw` : attente, garde d'activation, diagnostic `[ABSENT]` /
+`[DISABLED]`, reporting Serenity) et fonctionnent donc aussi dans `within`, y compris imbriqué. Le recours
+au JavaScript est **explicite** au point d'appel. ⚠️ **Noms et sémantique à arrêter** (BF-SYNC-17).
+
+**Options écartées** : surcharger `click` / `type` par sous-classe (granularité trop grossière, ne suit pas
+dans `within`) ; un mode global ou par instance « actions en JavaScript » (change le comportement de toutes
+les actions, un clic JavaScript saute les vérifications de visibilité et d'activation) ; un repli
+automatique quand l'action native « n'a pas d'effet » (cet état n'est pas détectable de façon fiable,
+risque de double action) ; une méthode générique « exécuter ce script sur l'élément » (ouvre en grand le
+contournement du socle).
+
+**Dernier recours hors socle** : `QaPageObject` hérite de `PageObject` (Serenity) et donne accès à
+`evaluateJavascript(…)`, `getDriver()` et `withAction()`. Ce chemin ne bénéficie ni du moteur d'attente, ni
+du diagnostic, ni de `within`, ni du masquage d'un `Secret`, et la règle ArchUnit de PA-17 le signalerait.
+
 ## D4 — Abstraction de la synchronisation (web + mobile)
 
 - `AbstractSyncManager` (moteur `fluentWait` + flag JS **et** tout le contrat commun par `By`) →
@@ -540,9 +564,8 @@ soient dans **le même package** que leur parent. Conséquences actées :
 - **`AbstractDataFileManager` est `sealed … permits CsvFileReaderWriter, ExcelFileReaderWriter`** : tout est
   package-private et le compilateur garantit qu'il n'existe que ces deux formats ; en ajouter un = une
   ligne dans `permits`.
-- **`AbstractSyncManager` n'est pas `sealed`** : son verrouillage est déjà assuré par le package-private, et
-  `sealed` obligerait `WebSync` et `MobileSync` (publics, sous-classables pour le bris de glace) à porter
-  `non-sealed` dans l'API publique.
+- **`AbstractSyncManager` n'est pas `sealed`** : son verrouillage est déjà assuré par le package-private
+  (et les façades `WebSync` / `MobileSync` sont `final`) ; `sealed … permits` n'ajouterait rien.
 - **Les interfaces publiques (`DataFileManager`, `SecretManager`) ne sont pas `sealed`** : le consommateur
   doit pouvoir écrire une doublure (mock ou faux `SecretManager`) pour tester sans CyberArk.
 - **`QaToolkitException` n'est pas `sealed`** : ses sous-types sont répartis dans leurs fonctionnalités.
@@ -552,7 +575,7 @@ soient dans **le même package** que leur parent. Conséquences actées :
 | Type | Package | Visibilité | Pourquoi |
 |---|---|---|---|
 | `QaToolkitException` | `com.example.qa` (racine) | `public abstract`, constructeurs `protected` | racine de la hiérarchie d'erreurs (D18) : un seul `catch` l'attrape ; le consommateur ne l'instancie ni ne la lève |
-| `WebSync`, `MobileSync` | `sync` | `public` (non-`final`) | types **déclarés** dans les PageObjects consommateurs ; sous-classables (bris de glace, ci-dessous) |
+| `WebSync`, `MobileSync` | `sync` | `public final` | types **déclarés** dans les PageObjects consommateurs ; non extensibles (cf. « Frontière `sync` », ci-dessous) |
 | `SwipeDirection`, `SyncTimeout` | `sync` | `public enum` | types de paramètre et profils de timeout |
 | `SyncException` | `sync` | `public final`, constructeurs package-private | erreur de synchro attrapable, levée par le seul socle |
 | `AbstractSyncManager` | `sync` | package-private `abstract` | moteur commun ; ses méthodes **publiques** sont héritées par `WebSync`/`MobileSync` (exception explicite, ci-dessous) |
@@ -590,7 +613,7 @@ soient dans **le même package** que leur parent. Conséquences actées :
   `AbstractSyncManager`, `SoftAssertions` ou `ReportingManager` est une **erreur de compilation** côté
   consommateur (« is not public in … ; cannot be accessed from outside package »), de même que
   `new SyncException(…)`. Vérifié le 2026-10-17 sur une classe de test placée dans un package tiers.
-- **Limites assumées** (cf. **PA-18**, **PA-19**) : le package-private est une protection du
+- **Limite assumée** (cf. **PA-18**) : le package-private est une protection du
   **compilateur**, non du runtime — un consommateur qui crée **délibérément** une classe dans le package
   `com.example.qa.sync` (split package sur le classpath) ou recourt à la réflexion peut la contourner.
   L'objectif — l'empêcher d'utiliser une implémentation **par inadvertance** (autocomplétion, import
@@ -599,7 +622,7 @@ soient dans **le même package** que leur parent. Conséquences actées :
 - Le périmètre contractuel = les types `public` du socle (hors classes ServiceLoader) : c'est ce que
   japicmp surveillera (étape 10).
 
-### Frontière `sync` : moteur package-private + surface gelée + échappatoire (acté étape 6 — option A, révisé 2026-10-17)
+### Frontière `sync` : moteur package-private + surface gelée + façades `final` (acté étape 6 — option A, révisé 2026-10-17)
 
 `WebSync`/`MobileSync` héritent **toute** leur surface commune (actions/lectures/états/attentes par `By`)
 d'`AbstractSyncManager`. Choix retenu (option A, après arbitrage) :
@@ -619,18 +642,18 @@ d'`AbstractSyncManager`. Choix retenu (option A, après arbitrage) :
 - **Membres `protected` du moteur retirés** (arbitrage 2026-10-17) : `fluentWait`, `query`, `act`,
   `actRaw`, `currentDriver`, `tryAssert` et les constructeurs `AbstractSyncManager(…)` /
   `WebSync(AbstractSyncManager, By)` / `MobileSync(AbstractSyncManager, By)` passent en package-private.
-  Ils manipulent `WebElementFacade` / `WebElement` : les laisser `protected` exposait ces types Selenium /
-  Serenity à toute sous-classe consommatrice (fuite du no-leak, D3) et les faisait entrer dans le contrat
-  gelé.
-- **Échappatoire « bris de glace »** : `WebSync`/`MobileSync` restent **sous-classables** et leurs
-  méthodes **non-`final`** (cohérent avec D19, qui n'impose `final` que sur les **champs**). En cas de bug
-  bloquant de synchro, un projet **surcharge la méthode publique fautive** dans une sous-classe (en
-  s'appuyant sur `super.xxx()` et les autres méthodes publiques), puis le correctif stable est **promu dans
-  le socle** (changement de corps = non-breaking). Le **mode opératoire** (sous-classe nommée + point
-  d'instanciation unique) est documenté dans le **Javadoc de `WebSync`/`MobileSync`**, pas ici.
-  **Limites** (cf. **PA-19**) : la sous-classe ne peut plus réutiliser le moteur (`fluentWait`…), et la vue
-  renvoyée par `within(By)` est une instance **de base** (`WebSync` / `MobileSync`) : la surcharge ne s'y
-  propage pas, faute de constructeur accessible.
+  Ils manipulent `WebElementFacade` / `WebElement` : les laisser `protected` aurait fait entrer ces types
+  Selenium / Serenity dans le contrat gelé (fuite du no-leak, D3). Les façades étant `final`, plus aucune
+  sous-classe consommatrice ne pouvait de toute façon s'en servir.
+- **Façades `final`, pas de surcharge de secours** (arbitrage 2026-10-17) : `WebSync` et `MobileSync` sont
+  `final`. Le socle est livré **recetté** par `qa-test` (décisions et SFD vérifiés) : un défaut se corrige
+  **dans le socle**, jamais par une surcharge côté projet. Le mécanisme de surcharge par sous-classe prévu
+  à l'origine par D15 (étape 6, dit « échappatoire ») est **abandonné** : il aurait remplacé le
+  comportement d'une méthode pour **tous** ses appels dans le projet (granularité trop grossière), et ne
+  se serait pas propagé aux vues `within`, qui sont des instances de base. Le besoin réel — une action
+  native Selenium sans effet dans une page pilotée par JavaScript — est traité par des **actions
+  explicites exécutées en JavaScript** (clic, saisie), cf. D3 et BF-SYNC-17. Rendre une classe `final`
+  après la 1.0.0 serait un breaking change : c'est donc fait avant.
 
 ### `QaPageObject` — classe de base publique destinée à l'héritage (2026-08-03)
 

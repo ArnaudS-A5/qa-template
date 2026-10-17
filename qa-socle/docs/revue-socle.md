@@ -90,8 +90,8 @@ versionnés).
 
 | Type | Package | Nature / modificateurs | Fidélité décision | État |
 |---|---|---|---|---|
-| `WebSync` | sync | `public class extends AbstractSyncManager`, méthodes non-`final` | D3/D4/D15 ✅ | **implémenté (web)** |
-| `MobileSync` | sync | `public class extends AbstractSyncManager`, non-`final` | D4 ✅ | surface héritée impl. ; **gestes différés** |
+| `WebSync` | sync | `public final class extends AbstractSyncManager` | D3/D4/D15 ✅ | **implémenté (web)** |
+| `MobileSync` | sync | `public final class extends AbstractSyncManager` | D4 ✅ | surface héritée impl. ; **gestes différés** |
 | `SwipeDirection` | sync | `public enum` (UP/DOWN/LEFT/RIGHT) | D4 ✅ neutre | complet |
 | `SyncTimeout` | sync | `public enum` (SHORT/MEDIUM/LONG/EXTRA_LONG) + clé/défaut | D3 maj ✅ | **complet** |
 | `SyncException` | sync | `public final class extends QaToolkitException`, constructeurs package-private | D18 ✅ | **complet** |
@@ -122,8 +122,8 @@ versionnés).
 
 **Lecture transverse de la nature des types** : l'usage des modificateurs Java est **discipliné et
 correct** — `abstract` réservé aux moteurs/templates ; `final` sur les classes qui ne doivent pas être
-étendues (factories, valeurs) et **jamais** sur les façades `sync` (échappatoire « bris de glace »
-voulue, D15) ; constructeurs `private` partout où une factory est le seul point d'entrée ; champs
+étendues (factories, valeurs, et depuis le 2026-10-17 les façades `sync` : pas de surcharge côté projet,
+D15) ; constructeurs `private` partout où une factory est le seul point d'entrée ; champs
 `private final` sur les valeurs immuables. Depuis la réorganisation du 2026-10-17 : **package-private** pour
 tout ce que le consommateur ne doit pas nommer (moteur, impls, collecteur soft-assert, domaine reporting),
 `final` sur les impls et les classes ServiceLoader, constructeurs des exceptions de domaine
@@ -456,4 +456,4 @@ d'entreprise** imposé par la DSI (chaîne d'héritage unique en Maven).
 | 12 | Dérives doc **W1–W7** | ✅ Terminé | — | — |
 | 13 | **Étape 9** — validation pilote sur SNAPSHOT/RC + ajustements API | ⬜ | Rester SNAPSHOT/RC : ne pas figer ni brûler une release | ⏳ revue finale |
 | 14 | **Étape 10** — japicmp/revapi + **1.0.0** + doc consommateur + généralisation | ⬜ | Baseline japicmp = 1ʳᵉ release publiée (rien à comparer avant) | ⏳ revue finale |
-| 15 | **Réorganisation par fonctionnalité** (2026-10-17) : packages `sync`/`page`/`data`/`secret`/`reporting`/`failure`/`log` + modificateurs (package-private, `final`, `sealed`, plus de `protected` dans le moteur) | ✅ Terminé (build vert, 70 tests ; compilation d'un consommateur simulé vérifiée) | La frontière est portée par le compilateur. **Limites** : contournement par split package / réflexion (PA-18), bris de glace sans moteur ni propagation par `within` (PA-19). Imports de `qa-test` à mettre à jour | ⏳ revue finale |
+| 15 | **Réorganisation par fonctionnalité** (2026-10-17) : packages `sync`/`page`/`data`/`secret`/`reporting`/`failure`/`log` + modificateurs (package-private, `final`, `sealed`, plus de `protected` dans le moteur) | ✅ Terminé (build vert, 70 tests ; compilation d'un consommateur simulé vérifiée) | La frontière est portée par le compilateur. **Limites** : contournement par split package / réflexion (PA-18), façades `final`. Imports de `qa-test` à mettre à jour | ⏳ revue finale |

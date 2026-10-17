@@ -204,8 +204,8 @@ l'étape 8.*
       (listener du socle) → **tous les types d'usage package-private** dans `reporting`, aucun type public (cf. D13/D15).
 - [x] **Frontière API `sync`** — **tranché (option A, cf. D15)** : `AbstractSyncManager` reste
       caché (package-private depuis le 2026-10-17), mais ses méthodes publiques (héritées par `WebSync`/`MobileSync`) sont **gelées** →
-      garde-fou japicmp **élargi** à l'étape 10. Façades **sous-classables / méthodes non-`final`** →
-      échappatoire « bris de glace » (mode opératoire dans le Javadoc des façades).
+      garde-fou japicmp **élargi** à l'étape 10. Façades **`final`**, sans surcharge côté projet
+      (2026-10-17, D15) : le socle est livré recetté, un défaut se corrige dans le socle.
 - [x] **Date de gel de l'API : `2026-06-24`.** Toutes les signatures publiques sont arrêtées (y compris les
       signatures de masquage du type `Secret`), de même que les **contrats de sortie versionnés** (dossier
       `KO__` D8/D16, format de masquage `Secret` D12). **Gel pré-1.0.0 = marqueur d'intention** : ajustable
@@ -280,6 +280,8 @@ ArchUnit, `CyberArkApiClient`, le reporting AUTO, la sentinelle JS et les gestes
 - [x] **`QaPageObject`** (2026-08-03, package `page`) : classe de base des Page Objects consommateurs
       exposant `web` + `web(SyncTimeout)` — supprime le *boilerplate* par page, oubli impossible en
       silence (erreur de compilation). Élargit l'API publique → périmètre japicmp (étape 10).
+- [ ] **Actions JavaScript** (clic, saisie) par `By` sur `WebSync`, pour les composants où l'action native
+      est sans effet (décision du 2026-10-17, cf. D3 et BF-SYNC-17) — **noms et sémantique à arrêter**.
 - [ ] `DataFileManager` (Excel/CSV) + tests.
 - [x] `TestFailureManager` (depuis le `TestOutcome` Serenity) + tests — **fait** : artefacts `KO__`
       (`ERROR.log`/`FAIL.log`/dump HTML), feuille KO, `sanitize` (accents translittérés), **capture du DOM

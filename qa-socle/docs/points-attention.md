@@ -27,7 +27,6 @@
 | PA-16 | ⬜ Ouvert (assumé) | Pas de dump `{step}.html` quand l'échec survient **hors `@Step`** |
 | PA-17 | ⬜ Ouvert | `QaPageObject` n'**empêche** pas l'usage de l'API Serenity native, qui court-circuite la synchro |
 | PA-18 | ⬜ Ouvert (assumé) | Le package-private protège le **compilateur**, pas le runtime : split package et réflexion le contournent |
-| PA-19 | ⬜ Ouvert (à arbitrer) | Bris de glace amoindri : sans accès au moteur, et la vue `within` n'est pas du type de la sous-classe |
 
 ---
 
@@ -265,7 +264,7 @@ classe rend le bon geste gratuit, la règle rend le mauvais geste visible.
 Depuis la réorganisation par fonctionnalité (2026-10-17, D15), les implémentations et le moteur sont
 **package-private** : un consommateur qui écrit `import com.example.qa.secret.CyberArkApiClient` obtient une
 **erreur de compilation** (« is not public … cannot be accessed from outside package »), de même que
-`new SyncException(…)` ou un appel à `fluentWait` depuis une sous-classe. Vérifié le 2026-10-17 sur une
+`new SyncException(…)` ou la sous-classe de `WebSync` (désormais `final`). Vérifié le 2026-10-17 sur une
 classe compilée dans un package tiers.
 
 La protection est cependant celle du **compilateur**, pas de la JVM. Deux contournements existent, tous deux
@@ -281,27 +280,6 @@ passage par la façade — est atteint. **Durcissements possibles, non décidés
 un autre emplacement) — à tester contre l'exécution des tests du socle et le *shading* éventuel ; (b) règle
 ArchUnit livrée aux consommateurs : « aucune classe du projet ne se trouve dans un package `com.example.qa.*` »,
 qui rend le contournement **visible**. À réévaluer si un projet est observé en train de contourner.
-
-## PA-19 — Bris de glace amoindri : pas d'accès au moteur, `within` non propagé 🟠 (à arbitrer)
-
-L'échappatoire « bris de glace » (D15) consiste à **sous-classer** `WebSync`/`MobileSync` et à **surcharger**
-la méthode publique fautive. Le moteur étant devenu package-private (arbitrage du 2026-10-17 : plus aucun
-membre `protected`), deux limites en découlent :
-
-1. la sous-classe **ne peut plus réutiliser le moteur** (`fluentWait`, `actRaw`, `tryAssert`…) : elle ne
-   dispose que de `super.xxx()` et des autres méthodes **publiques** ;
-2. **`within(By)` renvoie une instance de base** (`new WebSync(this, container)`) : la surcharge n'est donc
-   **pas propagée** aux vues bornées. Avant la réorganisation, une sous-classe pouvait surcharger `within`
-   et construire sa propre vue via le constructeur `protected`, dont le paramètre était un type nommable ;
-   ce constructeur est maintenant package-private.
-
-Seule la première limite est assumée (le bris de glace corrige un comportement en attendant la promotion
-du correctif dans le socle ; il n'a pas vocation à étendre le moteur). La seconde est **un vrai trou** : un
-correctif de bris de glace sur `click` ne s'appliquerait pas à `web.within(LIGNE).click(…)`.
-**Pistes (à arbitrer, aucune retenue)** : exposer un constructeur `protected WebSync(WebSync parent, By container)`
-(type public, donc nommable) ; ou faire de la création de la vue une méthode `protected` surchargeable ; ou
-documenter que le bris de glace ne couvre pas `within`. Le Javadoc de `WebSync`/`MobileSync` mentionne
-la limite en attendant.
 
 ## PA-14 — Horloge / sleeper non injectés (testabilité moteur) 🟡 (durcissement)
 
