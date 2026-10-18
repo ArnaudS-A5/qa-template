@@ -4,7 +4,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 import net.serenitybdd.model.environment.EnvironmentSpecificConfiguration;
+import net.thucydides.core.steps.StepEventBus;
 import net.thucydides.model.environment.SystemEnvironmentVariables;
+import net.thucydides.model.steps.ExecutedStepDescription;
+import net.thucydides.model.steps.StepFailure;
 import net.thucydides.model.util.EnvironmentVariables;
 
 /**
@@ -46,15 +49,54 @@ final class SoftAssertions {
 	 * Exécute une assertion en respectant le mode courant : en <b>hard</b>, une {@link AssertionError}
 	 * est relancée telle quelle ; en <b>soft</b>, elle est collectée et l'exécution continue. Point
 	 * d'entrée unique des {@code should…} du socle.
+	 *
+	 * <p><b>Signalement à Serenity (mode soft)</b> : si une {@code @Step} est en cours, l'échec est
+	 * aussi rapporté comme une <b>sous-étape de vérification</b> en échec, titrée par le message de
+	 * l'assertion (le procédé de {@code Serenity.reportThat}, sans relancer). L'étape du test devient
+	 * rouge par sa sous-étape, avec message et capture ; les étapes suivantes s'exécutent normalement.
+	 * Trois réglages du bus Serenity 4.2.22 sont tenus pendant ce signalement (PA-15) :
+	 * <ul>
+	 *   <li>le mode soft du bus est activé le temps du {@code stepFailed} : sans lui,
+	 *       {@code BaseStepListener} n'enregistre message et capture que pour le <b>premier</b> échec du
+	 *       test ;</li>
+	 *   <li>le drapeau « une étape a échoué » est rétabli à sa valeur antérieure : levé, il fait
+	 *       <b>sauter</b> les étapes suivantes et <b>suspend</b> les appels WebDriver ;</li>
+	 *   <li>un état antérieur est conservé tel quel : un vrai échec dur survenu plus tôt garde son
+	 *       effet.</li>
+	 * </ul>
+	 * Hors étape (corps du test, PageObject appelé hors {@code @Step}), l'échec est seulement collecté.
+	 * Best-effort : un incident de signalement ne fait jamais échouer le test, l'échec étant déjà
+	 * collecté.
 	 */
 	public static void check(Runnable assertion) {
 		try {
 			assertion.run();
 		} catch (AssertionError failure) {
-			if (isSoftEnabled()) {
-				COLLECTED.get().add(failure);
-			} else {
+			if (!isSoftEnabled()) {
 				throw failure;
+			}
+			COLLECTED.get().add(failure);
+			try {
+				StepEventBus bus = StepEventBus.getEventBus();
+				if (bus.areStepsRunning()) {
+					boolean softBefore = bus.softAssertsActive();
+					boolean failedBefore = bus.aStepInTheCurrentTestHasFailed();
+					ExecutedStepDescription check = ExecutedStepDescription.withTitle(failure.getMessage());
+					bus.stepStarted(check);
+					bus.enableSoftAsserts(); // message + capture enregistrés à chaque échec
+					try {
+						bus.stepFailed(new StepFailure(check, failure));
+					} finally {
+						if (!softBefore) {
+							bus.disableSoftAsserts();
+						}
+						if (!failedBefore) {
+							bus.clearStepFailures(); // pas de saut, pas de WebDriver suspendu
+						}
+					}
+				}
+			} catch (RuntimeException reportingIssue) {
+				// signalement best-effort : l'échec est collecté, il fera échouer le test en fin de test
 			}
 		}
 	}
