@@ -3,6 +3,7 @@ package com.example.qa.failure;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.example.qa.failure.RawDomCaptureListener.CapturedDom;
 import com.example.qa.failure.TestFailureManager.FailureArtefacts;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -63,8 +64,8 @@ class TestFailureArtefactsTest {
 	@DisplayName("Écrit les 3 fichiers (ERROR.log, FAIL.log, {step}.html) dans le bon dossier")
 	void ecritLesTroisFichiers(@TempDir Path tmp) throws IOException {
 		FailureArtefacts content = new FailureArtefacts(
-				"NullPointerException: x", "=== Cause ===\ntrace\n[FAILURE] step1", "clic sur bouton",
-				"<html>dump</html>");
+				"NullPointerException: x", "=== Cause ===\ntrace\n[FAILURE] step1",
+				List.of(new CapturedDom("clic sur bouton", "<html>dump</html>")));
 
 		Path dir = TestFailureManager.writeArtefacts(tmp, "INTEG", "monTest", WHEN, content);
 
@@ -75,9 +76,29 @@ class TestFailureArtefactsTest {
 	}
 
 	@Test
-	@DisplayName("Pas de dump HTML si la source est nulle (seulement ERROR.log + FAIL.log)")
-	void pasDeHtmlSiSourceNulle(@TempDir Path tmp) throws IOException {
-		FailureArtefacts content = new FailureArtefacts("e", "f", "step", null);
+	@DisplayName("Un dump HTML par step en échec ; même nom de step → suffixes -2, -3")
+	void unDumpParStepEnEchec(@TempDir Path tmp) throws IOException {
+		FailureArtefacts content = new FailureArtefacts("e", "f", List.of(
+				new CapturedDom("L'élément devrait être visible : By.id: cache", "<html>1</html>"),
+				new CapturedDom("L'élément devrait être présent : By.id: absent", "<html>2</html>"),
+				new CapturedDom("L'élément devrait être visible : By.id: cache", "<html>3</html>"),
+				new CapturedDom("L'élément devrait être visible : By.id: cache", "<html>4</html>")));
+
+		Path dir = TestFailureManager.writeArtefacts(tmp, "INTEG", "t", WHEN, content);
+
+		assertEquals("<html>1</html>", Files.readString(dir.resolve("Lelement_devrait_etre_visible_By.id_cache.html")));
+		assertEquals("<html>2</html>", Files.readString(dir.resolve("Lelement_devrait_etre_present_By.id_absent.html")));
+		assertEquals("<html>3</html>", Files.readString(dir.resolve("Lelement_devrait_etre_visible_By.id_cache-2.html")));
+		assertEquals("<html>4</html>", Files.readString(dir.resolve("Lelement_devrait_etre_visible_By.id_cache-3.html")));
+		try (Stream<Path> files = Files.list(dir)) {
+			assertEquals(6, files.count());
+		}
+	}
+
+	@Test
+	@DisplayName("Pas de dump HTML sans capture (seulement ERROR.log + FAIL.log)")
+	void pasDeHtmlSansCapture(@TempDir Path tmp) throws IOException {
+		FailureArtefacts content = new FailureArtefacts("e", "f", List.of());
 
 		Path dir = TestFailureManager.writeArtefacts(tmp, "INTEG", "t", WHEN, content);
 

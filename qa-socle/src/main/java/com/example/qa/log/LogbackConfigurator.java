@@ -25,7 +25,7 @@ package com.example.qa.log;
  * {@code logback.xml} local (prioritaire dans l'ordre de résolution ci-dessus) et ajuste le niveau du
  * logger « qa » à sa convenance. Valeurs par défaut au socle, finesse de réglage par projet.
  *
- * <p><b>Portée</b> : ne concerne que le <i>log live</i>. Les 3 fichiers {@code KO__} restent écrits
+ * <p><b>Portée</b> : ne concerne que le <i>log live</i>. Les fichiers {@code KO__} restent écrits
  * en Java par {@code TestFailureManager} depuis les {@code TestStep} Serenity (masqués), indépendants
  * de toute config Logback (D16-bis).
  *

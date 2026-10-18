@@ -1,9 +1,11 @@
 package com.example.qa.failure;
 
 import java.time.ZonedDateTime;
-import java.util.Optional;
+import java.util.ArrayList;
+import java.util.List;
 
 import net.thucydides.core.webdriver.ThucydidesWebDriverSupport;
+import net.thucydides.model.steps.AnnotatedStepDescription;
 import net.thucydides.model.steps.StepFailure;
 import net.thucydides.model.steps.StepListenerAdapter;
 import org.openqa.selenium.WebDriver;
@@ -20,9 +22,13 @@ import org.slf4j.LoggerFactory;
  * qui s'affiche directement dans un navigateur) et on le mémorise dans un {@link ThreadLocal} — un par
  * thread de test, donc sûr en parallèle.
  *
+ * <p><b>Une capture par step en échec</b>, dans l'ordre, avec le nom de la step tel que Serenity
+ * l'affiche ({@code AnnotatedStepDescription}). En mode dur, un test n'a qu'une step en échec ; en mode
+ * soft, chaque vérification en échec est une sous-étape (cf. {@code SoftAssertions}) et a sa capture.
+ *
  * <p><b>Pont avec {@link TestFailureManager}</b> : ce dernier tourne dans {@code executionFinished} (point
- * de lecture validé, même thread que le test — D22-bis) et <b>consomme</b> la valeur via
- * {@link #consumeCapturedDom()} (lecture puis purge). Le thread worker étant réutilisé séquentiellement,
+ * de lecture validé, même thread que le test — D22-bis) et <b>consomme</b> les captures via
+ * {@link #consumeCapturedDoms()} (lecture puis purge). Le thread worker étant réutilisé séquentiellement,
  * cette purge garantit qu'aucun DOM d'un test précédent ne fuit vers un test suivant.
  *
  * <p><b>Enregistrement</b> : déclaré comme SPI Serenity dans
@@ -38,12 +44,16 @@ public final class RawDomCaptureListener extends StepListenerAdapter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("qa");
 
-    /** DOM brut de la dernière step en échec, par thread de test. Le dernier échec (la feuille) gagne. */
-    private static final ThreadLocal<String> CAPTURED_DOM = new ThreadLocal<>();
+    /** DOM brut capté à chaque step en échec, dans l'ordre, par thread de test. */
+    private static final ThreadLocal<List<CapturedDom>> CAPTURED_DOMS = ThreadLocal.withInitial(ArrayList::new);
+
+    /** DOM brut d'une step en échec, avec le nom de la step tel qu'affiché par Serenity. */
+    record CapturedDom(String stepName, String html) {
+    }
 
     @Override
     public void stepFailed(StepFailure failure) {
-        capturePageSource();
+        capturePageSource(failure);
     }
 
     // ============================================================================================
@@ -74,7 +84,7 @@ public final class RawDomCaptureListener extends StepListenerAdapter {
      * Écarte une capture qui n'aurait <b>pas été consommée</b> par le test précédent, afin qu'un test ne
      * puisse jamais hériter du DOM d'un autre.
      *
-     * <p><b>Pourquoi c'est nécessaire</b> : {@link #consumeCapturedDom()} purge, mais il n'est appelé que
+     * <p><b>Pourquoi c'est nécessaire</b> : {@link #consumeCapturedDoms()} purge, mais il n'est appelé que
      * lorsque des artefacts sont réellement écrits. Une capture reste donc orpheline si les artefacts sont
      * désactivés ({@code qa.failure.artefacts.enabled=false}), si le test ne finit pas en {@code FAILED}
      * (step en échec puis rattrapée), si aucun {@code TestOutcome} n'est disponible, ou si l'écriture est
@@ -88,7 +98,7 @@ public final class RawDomCaptureListener extends StepListenerAdapter {
      * jamais entrer en concurrence avec la consommation.
      */
     private static void discardStaleCapture() {
-        CAPTURED_DOM.remove();
+        CAPTURED_DOMS.remove();
     }
 
     /**
@@ -97,32 +107,43 @@ public final class RawDomCaptureListener extends StepListenerAdapter {
      * sans ce point d'entrée, l'hygiène du {@link ThreadLocal} (PA-11) ne serait vérifiable qu'au
      * navigateur, alors que c'est précisément la partie qui se teste sans lui.
      */
-    static void rememberForTests(String dom) {
-        CAPTURED_DOM.set(dom);
+    static void rememberForTests(String stepName, String dom) {
+        CAPTURED_DOMS.get().add(new CapturedDom(stepName, dom));
     }
 
     /** Capte le DOM brut si un driver est instancié ; silencieux en cas d'indisponibilité. */
-    private static void capturePageSource() {
+    private static void capturePageSource(StepFailure failure) {
         try {
             if (!ThucydidesWebDriverSupport.isDriverInstantiated()) {
                 return;
             }
             WebDriver driver = ThucydidesWebDriverSupport.getDriver();
-            if (driver != null) {
-                CAPTURED_DOM.set(driver.getPageSource());
+            String html = driver == null ? null : driver.getPageSource();
+            if (html != null) {
+                CAPTURED_DOMS.get().add(new CapturedDom(stepNameOf(failure), html));
             }
         } catch (RuntimeException e) {
             LOGGER.debug("DOM brut indisponible au moment de l'échec de la step", e);
         }
     }
 
+    /** Nom de la step en échec tel que Serenity l'affiche dans le rapport ({@code TestStep#getDescription}). */
+    private static String stepNameOf(StepFailure failure) {
+        try {
+            return AnnotatedStepDescription.from(failure.getDescription()).getName();
+        } catch (RuntimeException unnamed) {
+            return "step";
+        }
+    }
+
     /**
-     * Renvoie le DOM brut capté pour le thread courant <b>et le purge</b> (consommation). Vide si aucune
-     * capture n'a eu lieu (driver absent, capture en échec) → le consommateur applique son repli.
+     * Renvoie les DOM bruts captés pour le thread courant, dans l'ordre des échecs, <b>et les purge</b>
+     * (consommation). Vide si aucune capture n'a eu lieu (driver absent, capture en échec) → le
+     * consommateur applique son repli.
      */
-    static Optional<String> consumeCapturedDom() {
-        String dom = CAPTURED_DOM.get();
-        CAPTURED_DOM.remove();
-        return Optional.ofNullable(dom);
+    static List<CapturedDom> consumeCapturedDoms() {
+        List<CapturedDom> doms = List.copyOf(CAPTURED_DOMS.get());
+        CAPTURED_DOMS.remove();
+        return doms;
     }
 }

@@ -12,11 +12,14 @@ import java.text.Normalizer;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.example.qa.failure.RawDomCaptureListener.CapturedDom;
 import net.serenitybdd.model.environment.EnvironmentSpecificConfiguration;
 import net.thucydides.core.steps.BaseStepListener;
 import net.thucydides.core.steps.StepEventBus;
@@ -45,8 +48,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p><b>Comportement</b> : sur {@link #executionFinished} en échec (et si {@link #ENABLED_KEY} est
  * actif), produit — pour un test KO uniquement — le dossier {@code KO__{ENV}__{Test}__{ts}/} avec ses
- * trois fichiers ({@code ERROR.log} synthétique, {@code FAIL.log} trace complète + historique des steps,
- * dump HTML de la step en erreur). Le {@code TestOutcome} Serenity est lu dans {@code executionFinished}
+ * fichiers ({@code ERROR.log} synthétique, {@code FAIL.log} trace complète + historique des steps, un dump
+ * HTML par step en erreur). Le {@code TestOutcome} Serenity est lu dans {@code executionFinished}
  * (point de lecture <b>validé</b> — D22-bis, y compris en parallèle).
  *
  * <p><b>Masquage</b> : appliqué <b>à la source</b> via {@link com.example.qa.secret.Secret#toString()}
@@ -110,10 +113,8 @@ public final class TestFailureManager implements TestExecutionListener {
      */
     void writeArtefacts(TestOutcome outcome) {
         try {
-            String failingStepName = failingStep(outcome).map(TestStep::getDescription).orElse("step");
-            String html = isDumpHtmlEnabled() ? failingStepHtml(outcome) : null;
-            FailureArtefacts content = new FailureArtefacts(
-                    buildErrorLog(outcome), buildFailLog(outcome), failingStepName, html);
+            List<CapturedDom> doms = isDumpHtmlEnabled() ? capturedDoms(outcome) : List.of();
+            FailureArtefacts content = new FailureArtefacts(buildErrorLog(outcome), buildFailLog(outcome), doms);
             Path dir = writeArtefacts(Paths.get(outputDir()), env(), outcome.getName(),
                     ZonedDateTime.now(ZoneId.systemDefault()), content);
             LOGGER.debug("Artefacts d'échec écrits dans {}", dir);
@@ -123,13 +124,15 @@ public final class TestFailureManager implements TestExecutionListener {
     }
 
     // ============================================================================================
-    // Cœur « pur » (testable sans navigateur) : nommage + écriture des 3 fichiers à partir de données
+    // Cœur « pur » (testable sans navigateur) : nommage + écriture des fichiers à partir de données
     // ============================================================================================
 
     /**
      * Écrit le dossier {@code KO__…} et ses fichiers à partir de données déjà extraites (pas de
-     * dépendance Serenity ici → testable directement). Le dump HTML n'est écrit que si {@code htmlSource}
-     * est non {@code null}.
+     * dépendance Serenity ici → testable directement) : {@code ERROR.log}, {@code FAIL.log}, puis <b>un
+     * dump HTML par step en échec</b>, nommé d'après la step. Deux steps de même nom (la même
+     * vérification en échec deux fois) donnent {@code {step}.html} puis {@code {step}-2.html},
+     * {@code {step}-3.html}…
      *
      * @return le dossier créé
      */
@@ -139,15 +142,20 @@ public final class TestFailureManager implements TestExecutionListener {
         Files.createDirectories(dir);
         Files.writeString(dir.resolve("ERROR.log"), nullToEmpty(content.errorLog()), StandardCharsets.UTF_8);
         Files.writeString(dir.resolve("FAIL.log"), nullToEmpty(content.failLog()), StandardCharsets.UTF_8);
-        if (content.htmlSource() != null) {
-            Files.writeString(dir.resolve(sanitize(content.failingStepName()) + ".html"),
-                    content.htmlSource(), StandardCharsets.UTF_8);
+        Set<String> fileNames = new HashSet<>();
+        for (CapturedDom dom : content.capturedDoms()) {
+            String baseName = sanitize(dom.stepName());
+            String fileName = baseName;
+            for (int occurrence = 2; !fileNames.add(fileName); occurrence++) {
+                fileName = baseName + "-" + occurrence;
+            }
+            Files.writeString(dir.resolve(fileName + ".html"), dom.html(), StandardCharsets.UTF_8);
         }
         return dir;
     }
 
-    /** Données extraites du {@code TestOutcome} pour produire les 3 fichiers (groupe les contenus). */
-    record FailureArtefacts(String errorLog, String failLog, String failingStepName, String htmlSource) {
+    /** Données extraites du {@code TestOutcome} pour produire les fichiers (groupe les contenus). */
+    record FailureArtefacts(String errorLog, String failLog, List<CapturedDom> capturedDoms) {
     }
 
     /** Nom de dossier contractuel {@code KO__{ENV}__{NomDuTest}__{yyyy-MM-dd_HH-mm-ss}} (délimiteur {@code __}). */
@@ -252,14 +260,21 @@ public final class TestFailureManager implements TestExecutionListener {
     }
 
     /**
-     * Dump HTML de la step en échec. Priorité au <b>DOM brut</b> capté au {@code stepFailed} par
-     * {@link RawDomCaptureListener} (option A : page rendable telle quelle, driver vivant) ; à défaut,
-     * <b>repli</b> sur la source HTML stockée par Serenity (option C : vue « code » Prism, échappée).
+     * Dumps HTML des steps en échec, masqués. Priorité aux <b>DOM bruts</b> captés à chaque
+     * {@code stepFailed} par {@link RawDomCaptureListener} (option A : page rendable telle quelle, driver
+     * vivant) ; à défaut, <b>repli</b> sur la source HTML stockée par Serenity pour la feuille en échec
+     * (option C : vue « code » Prism, échappée).
      */
-    private static String failingStepHtml(TestOutcome outcome) {
-        String html = RawDomCaptureListener.consumeCapturedDom()
-                .orElseGet(() -> failingStepHtmlFromSerenity(outcome));
-        return maskPasswordInputs(html);
+    private static List<CapturedDom> capturedDoms(TestOutcome outcome) {
+        List<CapturedDom> doms = RawDomCaptureListener.consumeCapturedDoms();
+        if (doms.isEmpty()) {
+            String html = failingStepHtmlFromSerenity(outcome);
+            String stepName = failingStep(outcome).map(TestStep::getDescription).orElse("step");
+            doms = html == null ? List.of() : List.of(new CapturedDom(stepName, html));
+        }
+        return doms.stream()
+                .map(dom -> new CapturedDom(dom.stepName(), maskPasswordInputs(dom.html())))
+                .toList();
     }
 
     /** Repli (option C) : dernière source HTML stockée par Serenity pour la step en échec. */
