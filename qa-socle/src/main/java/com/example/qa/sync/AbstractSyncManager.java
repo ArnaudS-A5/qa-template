@@ -917,12 +917,13 @@ abstract class AbstractSyncManager {
 	 * within sinon). État courant, sans attente : container introuvable → liste vide (jamais d'exception).
 	 */
 	private List<WebElement> findAll(By locator) {
-		WebDriver driver = driver();
-		try {
-			return resolveScope(driver).findElements(locator);
-		} catch (NoSuchElementException | StaleElementReferenceException containerGone) {
-			return List.of();
-		}
+		return withoutImplicitWait(() -> {
+			try {
+				return resolveScope(driver()).findElements(locator);
+			} catch (NoSuchElementException | StaleElementReferenceException containerGone) {
+				return List.of();
+			}
+		});
 	}
 
 	// ============================================================================================
