@@ -127,9 +127,14 @@ public final class WebSync extends AbstractSyncManager {
 		actRaw(locator, element -> js(currentDriver()).executeScript(TYPE_VIA_JS_SCRIPT, element, value));
 	}
 
-	/** Donne le focus fenêtre à l'élément cible (WebElementFacade#setWindowFocus). */
+	/**
+	 * Attend la présence de l'élément cible (profil de l'instance), puis donne le focus à la <b>fenêtre</b>
+	 * courante ({@code window.focus()}, WebElementFacade#setWindowFocus). Le focus porte sur la fenêtre,
+	 * pas sur l'élément. Élément absent au timeout → {@link SyncException} {@code [ABSENT]}.
+	 */
 	public void setWindowFocus(By locator) {
 		fluentWait(locator, element -> {
+			element.getWrappedElement(); // Serenity ne résout pas l'élément : résolution forcée (absent → [ABSENT])
 			element.setWindowFocus();
 			return null;
 		});
