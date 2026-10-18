@@ -98,7 +98,7 @@ Branches : `master` (stable, taguée aux releases) → `develop` (intégration) 
 
 Convention de commit : `<type>(<zone>): <résumé impératif court>` avec types `feat|fix|test|refactor|chore|docs|ci`.
 
-## Statut du projet (2026-10-17)
+## Statut du projet (2026-10-18)
 
 - **Étapes 1–6 terminées** : structure, versioning, exceptions, config, stratégie de test, signatures gelées (gel API 2026-06-24).
 - **Réorganisation par fonctionnalité (2026-10-17, branche `feature/package-by-feature`)** : packages `api`/`internal` remplacés par un package par fonctionnalité, implémentations package-private (D15 réécrite). Les noms complets des types publics ont changé (ex. `com.example.qa.sync.WebSync`) : les imports de `qa-test` sont à mettre à jour. Build vert, 70 tests.
@@ -106,6 +106,7 @@ Convention de commit : `<type>(<zone>): <résumé impératif court>` avec types 
 - **Étape 8 en cours** :
   - **FAILURE** (`TestFailureManager` + `RawDomCaptureListener`) et **infra soft-assert** (`SoftAssertions`/`SoftAssertionExtension`, package `sync`, D22-bis) — faits + testés.
   - **SYNC web** — **fait et validé au navigateur** (campagne `qa-test` du 2026-08-02) : moteur `poll`, profils `SyncTimeout` **effectivement appliqués**, diagnostic actif `SyncCondition`, 80 méthodes (dont `clickViaJS` / `typeViaJS`, 2026-10-17), `within`, `type(By,Secret)`, `should…` via `tryAssert`. **C8 (« une seule horloge ») réellement atteint** : `NO_FACADE_CLOCK = 1L`, les 8 actions mutantes sur `WebElement` brut via `actRaw`, implicit wait neutralisé via `ConfigurableTimeouts`, garde `requireEnabled`, `classify` élargi aux exceptions Serenity. `pageLoadTimeout` appliqué (marqueur lié au driver).
+  - **Écarts T43 / T76** (2026-10-18) : `count` / `getTexts` / `within` sans implicit wait ; `setWindowFocus(By)` attend son élément (`[ABSENT]` au timeout). Couverts par tests unitaires (faux driver `RecordingDriver`), **à revalider dans `qa-test`** (Chrome + Firefox). Build vert, 75 tests.
   - **`QaPageObject`** (package `page`) : classe de base des PageObjects consommateurs.
   - **Restent** : sentinelle **flag JS**, `DataFileManager`, `LogbackConfigurator`, ArchUnit, `CyberArkApiClient`, reporting AUTO, gestes `MobileSync`.
 - **Étapes 9–10** : à faire (pilote, japicmp, release 1.0.0).
