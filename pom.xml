@@ -42,6 +42,13 @@
 
     <properties>
         <maven.compiler.release>17</maven.compiler.release>
+        <artifactory.url>http://artifactory.home.arpa:8082/artifactory</artifactory.url>
+        <sonar.host.url>http://sonarqube.home.arpa:9000</sonar.host.url>
+        <selenium.grid.url>http://grid.home.arpa:4444</selenium.grid.url>
+        <jacoco.plugin.version>0.8.15</jacoco.plugin.version>
+        <sonar.maven.plugin.version>5.8.0.7211</sonar.maven.plugin.version>
+        <deploy.plugin.version>3.1.4</deploy.plugin.version>
+        <jar.plugin.version>3.4.2</jar.plugin.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
@@ -147,6 +154,21 @@
         <pluginManagement>
             <plugins>
                 <plugin>
+                    <groupId>org.sonarsource.scanner.maven</groupId>
+                    <artifactId>sonar-maven-plugin</artifactId>
+                    <version>${sonar.maven.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-deploy-plugin</artifactId>
+                    <version>${deploy.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-jar-plugin</artifactId>
+                    <version>${jar.plugin.version}</version>
+                </plugin>
+                <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>${compiler.plugin.version}</version>
@@ -246,21 +268,54 @@
         - <mirror> vers le repo virtuel pour la résolution des dépendances.
       Cf. skill artifactory-jfrog-settings.
 
-      ⚠️ PLACEHOLDERS : remplacer artifactory.example.com et les noms de repos
-      (libs-release-local / libs-snapshot-local) par les valeurs de VOTRE
-      instance Artifactory. Ne JAMAIS committer de credentials ici.
+      Les URLs locales sont surchargeables via -Dartifactory.url.
+      Ne JAMAIS committer de credentials ici.
     -->
     <distributionManagement>
         <repository>
             <id>artifactory-releases</id>
             <name>Artifactory — releases</name>
-            <url>https://artifactory.example.com/artifactory/libs-release-local</url>
+            <url>${artifactory.url}/libs-release-local</url>
         </repository>
         <snapshotRepository>
             <id>artifactory-snapshots</id>
             <name>Artifactory — snapshots</name>
-            <url>https://artifactory.example.com/artifactory/libs-snapshot-local</url>
+            <url>${artifactory.url}/libs-snapshot-local</url>
         </snapshotRepository>
     </distributionManagement>
 
+    <!-- Explicit CI profile: real coverage reports, including when inherited by qa-test. -->
+    <profiles>
+        <profile>
+            <id>ci</id>
+            <properties>
+                <qa.coverage.dataFile>${project.build.directory}/jacoco.exec</qa.coverage.dataFile>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.jacoco</groupId>
+                        <artifactId>jacoco-maven-plugin</artifactId>
+                        <version>${jacoco.plugin.version}</version>
+                        <configuration>
+                            <destFile>${qa.coverage.dataFile}</destFile>
+                            <dataFile>${qa.coverage.dataFile}</dataFile>
+                            <append>true</append>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>coverage-agent</id>
+                                <goals><goal>prepare-agent</goal></goals>
+                            </execution>
+                            <execution>
+                                <id>coverage-report</id>
+                                <phase>verify</phase>
+                                <goals><goal>report</goal></goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
